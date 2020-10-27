@@ -8,13 +8,11 @@ import (
 )
 
 func TestToJSON(t *testing.T) {
-	require := require.New(t)
+	_ = require.New(t)
 
 	header := &inter.EventHeaderData{}
-	encoder := NewNeo4jEncoding(header, "GasPowerLeft", "Parents")
-
 	header.Creator = 9
-	data, err := encoder.Marshal(header)
-	require.NoError(err)
-	t.Log(string(data))
+
+	fields := Neo4jMarshal(header)
+	t.Log(fields.String())
 }

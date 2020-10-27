@@ -52,20 +52,15 @@ func LoadToNeo4j(dbUrl string, events <-chan *inter.Event) (err error) {
 
 	// DML
 	var (
-		encoder = NewNeo4jEncoding(&inter.EventHeaderData{}, "GasPowerLeft", "Parents")
 		counter int
 		last    hash.Event
 	)
 	for event := range events {
 		_, err = session.WriteTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
 
-			header, err := encoder.Marshal(&event.EventHeaderData)
-			if err != nil {
-				return nil, err
-			}
-
-			log.Info("<<<", "event", string(header))
-			err = exec(ctx, "CREATE (e:Event %s)", string(header))
+			header := Neo4jMarshal(&event.EventHeaderData)
+			log.Info("<<<", "event", header.String())
+			err = exec(ctx, "CREATE (e:Event %s)", header.String())
 			if err != nil {
 				return nil, err
 			}
