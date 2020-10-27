@@ -38,21 +38,27 @@ func LoadToNeo4j(dbUrl string, events <-chan *inter.Event) (err error) {
 	defer session.Close()
 
 	var (
+		encoder = NewNeo4jEncoding(&inter.EventHeaderData{}, "GasPowerLeft", "Parents")
 		counter int
 		last    hash.Event
 	)
 	for event := range events {
-
-		_, err := session.WriteTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
-			result, err := ctx.Run(
-				"CREATE (e:Event) SET e.hash = $hash",
-				map[string]interface{}{
-					"hash": event.Hash().String(),
-				})
+		_, err = session.WriteTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
+			header, err := encoder.Marshal(&event.EventHeaderData)
 			if err != nil {
 				return nil, err
 			}
+
+			result, err := ctx.Run(
+				"CREATE (e:Event "+string(header)+")",
+				nil)
+			if err != nil {
+				panic(string(header))
+				return nil, err
+			}
+
 			return nil, result.Err()
+
 		})
 		if err != nil {
 			log.Error("<<<", "err", err)
