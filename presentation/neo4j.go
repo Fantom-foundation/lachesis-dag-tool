@@ -1,6 +1,7 @@
 package presentation
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -37,6 +38,19 @@ func LoadToNeo4j(dbUrl string, events <-chan *inter.Event) (err error) {
 	}
 	defer session.Close()
 
+	// DDL
+	_, err = session.WriteTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
+		err := exec(ctx, "CREATE CONSTRAINT ON (e:Event) ASSERT e.Hash IS UNIQUE")
+		if err != nil {
+			return nil, err
+		}
+		return nil, nil
+	})
+	if err != nil {
+		log.Warn(err.Error())
+	}
+
+	// DML
 	var (
 		encoder = NewNeo4jEncoding(&inter.EventHeaderData{}, "GasPowerLeft", "Parents")
 		counter int
@@ -44,20 +58,29 @@ func LoadToNeo4j(dbUrl string, events <-chan *inter.Event) (err error) {
 	)
 	for event := range events {
 		_, err = session.WriteTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
+
 			header, err := encoder.Marshal(&event.EventHeaderData)
 			if err != nil {
 				return nil, err
 			}
 
-			result, err := ctx.Run(
-				"CREATE (e:Event "+string(header)+")",
-				nil)
+			log.Info("<<<", "event", string(header))
+			err = exec(ctx, "CREATE (e:Event %s)", string(header))
 			if err != nil {
-				panic(string(header))
 				return nil, err
 			}
 
-			return nil, result.Err()
+			for _, p := range event.Parents {
+				err = exec(ctx, `MATCH (e:Event {Hash:'%s'}), (p:Event {Hash:'%s'}) CREATE (e)-[:PARENT]->(p)`,
+					event.Hash().Hex(),
+					p.Hex(),
+				)
+				if err != nil {
+					return nil, err
+				}
+			}
+
+			return nil, nil
 
 		})
 		if err != nil {
@@ -75,4 +98,19 @@ func LoadToNeo4j(dbUrl string, events <-chan *inter.Event) (err error) {
 
 	log.Info("Exported events", "last", last.String(), "exported", counter, "elapsed", common.PrettyDuration(time.Since(start)))
 	return
+}
+
+type executor interface {
+	Run(cypher string, params map[string]interface{}) (neo4j.Result, error)
+}
+
+func exec(ctx executor, cypher string, a ...interface{}) error {
+	query := fmt.Sprintf(cypher, a...)
+	log.Debug("cypher", "query", query)
+	res, err := ctx.Run(query, nil)
+	if err != nil {
+		return err
+	}
+
+	return res.Err()
 }
