@@ -1,10 +1,10 @@
 package presentation
 
 import (
-	"log"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/neo4j/neo4j-go-driver/neo4j"
 
 	"github.com/Fantom-foundation/go-lachesis/hash"
@@ -55,18 +55,18 @@ func LoadToNeo4j(dbUrl string, events <-chan *inter.Event) (err error) {
 			return nil, result.Err()
 		})
 		if err != nil {
-			log.Printf("<<< err: %v", err)
+			log.Error("<<<", "err", err)
 			return err
 		}
 
 		counter++
 		last = event.Hash()
 		if counter%100 == 1 && time.Since(reported) >= statsReportLimit {
-			log.Printf("<<< %d events for %s. Last %s", counter, common.PrettyDuration(time.Since(start)), last.String())
+			log.Info("<<<", "last", last.String(), "exported", counter, "elapsed", common.PrettyDuration(time.Since(start)))
 			reported = time.Now()
 		}
 	}
 
-	log.Printf("Exported %d events for %s. Last %s", counter, common.PrettyDuration(time.Since(start)), last.String())
+	log.Info("Exported events", "last", last.String(), "exported", counter, "elapsed", common.PrettyDuration(time.Since(start)))
 	return
 }

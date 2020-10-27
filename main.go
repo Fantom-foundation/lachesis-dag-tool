@@ -2,13 +2,13 @@ package main
 
 import (
 	"context"
-	"log"
 	"os"
 	"os/signal"
 	"strconv"
 	"syscall"
 
 	"github.com/Fantom-foundation/go-lachesis/inter/idx"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/urfave/cli"
 
@@ -95,6 +95,6 @@ func waitForInterrupt(ctx context.Context) {
 
 func main() {
 	if err := App.Run(os.Args); err != nil {
-		log.Fatal(err)
+		log.Crit("Fail", "err", err)
 	}
 }

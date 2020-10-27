@@ -2,7 +2,6 @@ package source
 
 import (
 	"context"
-	"log"
 	"path/filepath"
 	"runtime"
 
@@ -12,6 +11,7 @@ import (
 	"github.com/Fantom-foundation/go-lachesis/inter"
 	"github.com/Fantom-foundation/go-lachesis/inter/idx"
 	"github.com/Fantom-foundation/go-lachesis/kvdb/flushable"
+	"github.com/ethereum/go-ethereum/log"
 )
 
 func Events(ctx context.Context, dataDir string, from, to idx.Epoch) <-chan *inter.Event {
@@ -31,7 +31,7 @@ func Events(ctx context.Context, dataDir string, from, to idx.Epoch) <-chan *int
 			case <-ctx.Done():
 				return false
 			case output <- event:
-				log.Printf(">>> event %s", event.Hash())
+				log.Info(">>>", "event", event.Hash())
 			}
 			return true
 		})
