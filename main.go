@@ -46,6 +46,8 @@ func init() {
 	}
 	App.Commands = []cli.Command{
 		cmdImport,
+		cmdReadNeo4j,
+		cmdReadKVdb,
 	}
 }
 
