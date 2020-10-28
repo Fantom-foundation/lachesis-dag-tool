@@ -2,9 +2,14 @@ package main
 
 import (
 	"context"
+	"time"
 
+	"github.com/Fantom-foundation/go-lachesis/hash"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/urfave/cli"
+
+	"github.com/Fantom-foundation/lachesis-dag-tool/neo4j"
 )
 
 var (
@@ -27,9 +32,16 @@ func actReadNeo4j(cli *cli.Context) (err error) {
 	ctx, stop := context.WithCancel(context.Background())
 	go func() {
 		defer stop()
+		start := time.Now()
 		log.Info("Data from Neo4j", "database", src)
-		// TODO: read data from Neo4j database.
-		err = nil
+		// TODO: read event hash from cli arg.
+		event := hash.HexToEventHash("0x0000000400000016f9a4c23827a98e8dfa1358a41eb79d71e889c97c973722ab")
+		var ancestors []hash.Event
+		ancestors, err = neo4j.FindAncestors(src, event)
+		if err != nil {
+			return
+		}
+		log.Info("Data from Neo4j", "ancestors", len(ancestors), "elapsed", common.PrettyDuration(time.Since(start)))
 	}()
 
 	waitForInterrupt(ctx)

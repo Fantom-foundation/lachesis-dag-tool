@@ -38,7 +38,7 @@ func LoadTo(dbUrl string, events <-chan *inter.Event) error {
 
 	// DDL
 	_, err = session.WriteTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
-		err := exec(ctx, "CREATE CONSTRAINT ON (e:Event) ASSERT e.Hash IS UNIQUE")
+		err := exec(ctx, "CREATE CONSTRAINT ON (e:Event) ASSERT e.hash IS UNIQUE")
 		if err != nil {
 			return nil, err
 		}
@@ -63,20 +63,22 @@ func LoadTo(dbUrl string, events <-chan *inter.Event) error {
 			log.Debug("<<<", "event", header.String())
 			err = exec(ctx, "CREATE (e:Event %s)", header.String())
 			if err != nil {
+				_ = ctx.Rollback()
 				return nil, err
 			}
 
 			for _, p := range event.Parents {
-				err = exec(ctx, `MATCH (e:Event {Hash:'%s'}), (p:Event {Hash:'%s'}) CREATE (e)-[:PARENT]->(p)`,
+				err = exec(ctx, `MATCH (e:Event {hash:'%s'}), (p:Event {hash:'%s'}) CREATE (e)-[:PARENT]->(p)`,
 					event.Hash().Hex(),
 					p.Hex(),
 				)
 				if err != nil {
+					_ = ctx.Rollback()
 					return nil, err
 				}
 			}
 
-			return nil, nil
+			return nil, ctx.Commit()
 
 		})
 		if err != nil {
@@ -103,11 +105,44 @@ func LoadTo(dbUrl string, events <-chan *inter.Event) error {
 	return nil
 }
 
-type executor interface {
-	Run(cypher string, params map[string]interface{}) (neo4j.Result, error)
+// FindAncestors of event.
+func FindAncestors(dbUrl string, event hash.Event) (ancestors []hash.Event, err error) {
+	db, err := neo4j.NewDriver(dbUrl, neo4j.NoAuth(), func(c *neo4j.Config) {
+		c.Encrypted = false
+	})
+	if err != nil {
+		return
+	}
+	defer db.Close()
+
+	session, err := db.Session(neo4j.AccessModeRead)
+	if err != nil {
+		return
+	}
+	defer session.Close()
+
+	res, err := session.ReadTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
+		res, err := search(ctx, "MATCH (p:Event {hash:'%s'})-[:PARENT*]->(s:Event) RETURN DISTINCT s.hash", event.Hex())
+		if err != nil {
+			return nil, err
+		}
+
+		var ancestors []hash.Event
+		for res.Next() {
+			hex := res.Record().GetByIndex(0).(string)
+			ancestors = append(ancestors, hash.HexToEventHash(hex))
+		}
+		return ancestors, nil
+	})
+	if err != nil {
+		return
+	}
+
+	ancestors = res.([]hash.Event)
+	return
 }
 
-func exec(ctx executor, cypher string, a ...interface{}) error {
+func exec(ctx neo4j.Transaction, cypher string, a ...interface{}) error {
 	query := fmt.Sprintf(cypher, a...)
 	log.Debug("cypher", "query", query)
 	res, err := ctx.Run(query, nil)
@@ -116,4 +151,15 @@ func exec(ctx executor, cypher string, a ...interface{}) error {
 	}
 
 	return res.Err()
+}
+
+func search(ctx neo4j.Transaction, cypher string, a ...interface{}) (neo4j.Result, error) {
+	query := fmt.Sprintf(cypher, a...)
+	log.Debug("cypher", "query", query)
+	res, err := ctx.Run(query, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return res, res.Err()
 }
