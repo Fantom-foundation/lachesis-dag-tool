@@ -7,7 +7,7 @@ import (
 	"github.com/Fantom-foundation/go-lachesis/inter/idx"
 	"github.com/urfave/cli"
 
-	"github.com/Fantom-foundation/lachesis-dag-tool/presentation"
+	"github.com/Fantom-foundation/lachesis-dag-tool/neo4j"
 	"github.com/Fantom-foundation/lachesis-dag-tool/source"
 )
 
@@ -53,7 +53,7 @@ func actImport(cli *cli.Context) (err error) {
 	go func() {
 		defer stop()
 		events := source.Events(ctx, src, from, to)
-		err = presentation.LoadToNeo4j(dst, events)
+		err = neo4j.LoadTo(dst, events)
 	}()
 
 	waitForInterrupt(ctx)

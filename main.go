@@ -10,7 +10,7 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/urfave/cli"
 
-	"github.com/Fantom-foundation/lachesis-dag-tool/presentation"
+	"github.com/Fantom-foundation/lachesis-dag-tool/neo4j"
 )
 
 var (
@@ -23,7 +23,7 @@ var (
 	neo4jUrlFlag = cli.StringFlag{
 		Name:  "neo4j",
 		Usage: "Neo4j DB url",
-		Value: presentation.Neo4jDefaultDb,
+		Value: neo4j.DefaultDb,
 	}
 )
 

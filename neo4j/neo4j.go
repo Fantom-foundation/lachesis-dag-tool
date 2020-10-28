@@ -1,4 +1,4 @@
-package presentation
+package neo4j
 
 import (
 	"fmt"
@@ -13,15 +13,15 @@ import (
 )
 
 const (
-	Neo4jDefaultDb = "bolt://localhost:7687"
+	DefaultDb = "bolt://localhost:7687"
 
 	// statsReportLimit is the time limit during import and export after which we
 	// always print out progress. This avoids the user wondering what's going on.
 	statsReportLimit = 8 * time.Second
 )
 
-// exportTo writer the active chain.
-func LoadToNeo4j(dbUrl string, events <-chan *inter.Event) (err error) {
+// LoadTo Neo4j from events chain.
+func LoadTo(dbUrl string, events <-chan *inter.Event) (err error) {
 	start, reported := time.Now(), time.Time{}
 
 	db, err := neo4j.NewDriver(dbUrl, neo4j.NoAuth(), func(c *neo4j.Config) {
@@ -58,7 +58,7 @@ func LoadToNeo4j(dbUrl string, events <-chan *inter.Event) (err error) {
 	for event := range events {
 		_, err = session.WriteTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
 
-			header := Neo4jMarshal(&event.EventHeaderData)
+			header := Marshal(&event.EventHeaderData)
 			log.Info("<<<", "event", header.String())
 			err = exec(ctx, "CREATE (e:Event %s)", header.String())
 			if err != nil {

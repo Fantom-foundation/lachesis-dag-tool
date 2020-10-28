@@ -1,4 +1,4 @@
-package presentation
+package neo4j
 
 import (
 	"testing"
@@ -7,12 +7,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestToJSON(t *testing.T) {
+func TestMarshaling(t *testing.T) {
 	_ = require.New(t)
 
 	header := &inter.EventHeaderData{}
 	header.Creator = 9
 
-	fields := Neo4jMarshal(header)
+	fields := Marshal(header)
 	t.Log(fields.String())
 }

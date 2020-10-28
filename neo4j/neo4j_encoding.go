@@ -1,4 +1,4 @@
-package presentation
+package neo4j
 
 import (
 	"fmt"
@@ -7,9 +7,9 @@ import (
 	"github.com/Fantom-foundation/go-lachesis/inter"
 )
 
-type Neo4jFields map[string]string
+type Fields map[string]string
 
-func (ff *Neo4jFields) String() string {
+func (ff *Fields) String() string {
 	buf := &strings.Builder{}
 
 	buf.WriteString("{")
@@ -29,10 +29,10 @@ func (ff *Neo4jFields) String() string {
 	return buf.String()
 }
 
-func Neo4jMarshal(x interface{}) Neo4jFields {
+func Marshal(x interface{}) Fields {
 	switch e := x.(type) {
 	case *inter.EventHeaderData:
-		return Neo4jFields{
+		return Fields{
 			"hash":    fmt.Sprintf("'%s'", e.Hash().Hex()),
 			"creator": fmt.Sprintf("%d", e.Creator),
 		}
