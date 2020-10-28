@@ -15,6 +15,7 @@ import (
 )
 
 func Events(ctx context.Context, dataDir string, from, to idx.Epoch) <-chan *inter.Event {
+	log.Info("Events of epoches", "from", from, "to", to, "datadir", dataDir)
 	output := make(chan *inter.Event, 10)
 
 	go func() {

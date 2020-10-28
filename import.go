@@ -30,19 +30,19 @@ var (
 )
 
 func actImport(cli *cli.Context) (err error) {
-	src := cli.GlobalString(dataDirFlag.Name)
 	dst := cli.GlobalString(neo4jUrlFlag.Name)
+	src := cli.String(dataDirFlag.Name)
 	from := idx.Epoch(1)
-	if len(cli.Args()) > 1 {
-		n, err := strconv.ParseUint(cli.Args().Get(1), 10, 32)
+	if len(cli.Args()) > 0 {
+		n, err := strconv.ParseUint(cli.Args().Get(0), 10, 32)
 		if err != nil {
 			return err
 		}
 		from = idx.Epoch(n)
 	}
 	to := idx.Epoch(0)
-	if len(cli.Args()) > 2 {
-		n, err := strconv.ParseUint(cli.Args().Get(2), 10, 32)
+	if len(cli.Args()) > 1 {
+		n, err := strconv.ParseUint(cli.Args().Get(1), 10, 32)
 		if err != nil {
 			return err
 		}
