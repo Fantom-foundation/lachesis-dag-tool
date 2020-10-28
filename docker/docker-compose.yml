@@ -8,3 +8,5 @@ services:
       - NEO4J_AUTH=none
     ports:
       - 7687:7687
+    volumes:
+      - ./neo4j-data:/data
