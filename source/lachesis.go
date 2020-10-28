@@ -7,6 +7,7 @@ import (
 
 	"github.com/Fantom-foundation/go-lachesis/app"
 	"github.com/Fantom-foundation/go-lachesis/gossip"
+	"github.com/Fantom-foundation/go-lachesis/hash"
 	"github.com/Fantom-foundation/go-lachesis/integration"
 	"github.com/Fantom-foundation/go-lachesis/inter"
 	"github.com/Fantom-foundation/go-lachesis/inter/idx"
@@ -46,6 +47,52 @@ func makeGossipStore(dataDir string) *gossip.Store {
 	gdb := gossip.NewStore(dbs, gossip.LiteStoreConfig(), app.LiteStoreConfig())
 	gdb.SetName("lachesis-db")
 	return gdb
+}
+
+// FindAncestors of event.
+func FindAncestors(dataDir string, event hash.Event) (ancestors []hash.Event, err error) {
+	const (
+		processed = true
+	)
+
+	gdb := makeGossipStore(dataDir)
+	defer gdb.Close()
+
+	e0 := gdb.GetEvent(event)
+	if e0 == nil {
+		return
+	}
+	queue := make(map[hash.Event]bool)
+	for _, p := range e0.Parents {
+		queue[p] = !processed
+	}
+
+	repeat := true
+	for repeat {
+		repeat = false
+		for h, status := range queue {
+			if status == processed {
+				continue
+			}
+
+			queue[h] = processed
+			e := gdb.GetEvent(h)
+			for _, p := range e.Parents {
+				if _, was := queue[p]; !was {
+					queue[p] = !processed
+				}
+			}
+
+			repeat = true
+			break
+		}
+	}
+
+	for p := range queue {
+		ancestors = append(ancestors, p)
+	}
+
+	return
 }
 
 // DefaultDataDir is the default data directory to use for the databases and other
