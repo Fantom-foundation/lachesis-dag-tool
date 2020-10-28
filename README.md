@@ -21,10 +21,10 @@ See `lachesis-dag-tool help`.
 
  - run Neo4j db;
  - load DAG into Neo4j;
- - `lachesis-dag-tool read`;
+ - `lachesis-dag-tool read "0x0000000400000016f9a4c23827a98e8dfa1358a41eb79d71e889c97c973722ab"`;
 
 
 ## Read DAG from KV db
 
- - `lachesis-dag-tool read1 --datadir=${LACHESIS_DATADIR}`;
+ - `lachesis-dag-tool read1 --datadir=${LACHESIS_DATADIR} "0x0000000400000016f9a4c23827a98e8dfa1358a41eb79d71e889c97c973722ab"`;
  - compare performance with Neo4j db;

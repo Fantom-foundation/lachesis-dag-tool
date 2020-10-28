@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/Fantom-foundation/go-lachesis/hash"
@@ -26,14 +27,18 @@ var (
 func actReadKVdb(cli *cli.Context) (err error) {
 	src := cli.String(dataDirFlag.Name)
 
+	event := hash.HexToEventHash(cli.Args().First())
+	if event.IsZero() {
+		err = fmt.Errorf("arg0 (event hash) required")
+		return
+	}
+
 	ctx, stop := context.WithCancel(context.Background())
 	go func() {
 		defer stop()
 
 		start := time.Now()
-		log.Info("Data from KV", "database", src)
-		// TODO: read event hash from cli arg.
-		event := hash.HexToEventHash("0x0000000400000016f9a4c23827a98e8dfa1358a41eb79d71e889c97c973722ab")
+		log.Info("Data from KV", "database", src, "event", event)
 		var ancestors []hash.Event
 		ancestors, err = source.FindAncestors(src, event)
 		if err != nil {
