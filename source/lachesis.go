@@ -32,7 +32,7 @@ func Events(ctx context.Context, dataDir string, from, to idx.Epoch) <-chan *int
 			case <-ctx.Done():
 				return false
 			case output <- event:
-				log.Info(">>>", "event", event.Hash())
+				log.Debug(">>>", "event", event.Hash())
 			}
 			return true
 		})

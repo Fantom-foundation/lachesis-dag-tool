@@ -37,6 +37,9 @@ func version() string {
 }
 
 func init() {
+	log.Root().SetHandler(
+		log.LvlFilterHandler(log.LvlInfo, log.StdoutHandler))
+
 	App.Version = version()
 	App.Flags = []cli.Flag{
 		neo4jUrlFlag,
@@ -51,7 +54,9 @@ func waitForInterrupt(ctx context.Context) {
 	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
 	select {
 	case <-sigs:
+		log.Warn("Interrupted")
 	case <-ctx.Done():
+		log.Info("Finished")
 	}
 }
 

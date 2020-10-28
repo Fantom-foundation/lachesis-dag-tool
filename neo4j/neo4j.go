@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Fantom-foundation/go-lachesis/hash"
+	"github.com/Fantom-foundation/go-lachesis/inter"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/neo4j/neo4j-go-driver/neo4j"
-
-	"github.com/Fantom-foundation/go-lachesis/hash"
-	"github.com/Fantom-foundation/go-lachesis/inter"
+	"github.com/paulbellamy/ratecounter"
 )
 
 const (
@@ -21,9 +21,7 @@ const (
 )
 
 // LoadTo Neo4j from events chain.
-func LoadTo(dbUrl string, events <-chan *inter.Event) (err error) {
-	start, reported := time.Now(), time.Time{}
-
+func LoadTo(dbUrl string, events <-chan *inter.Event) error {
 	db, err := neo4j.NewDriver(dbUrl, neo4j.NoAuth(), func(c *neo4j.Config) {
 		c.Encrypted = false
 	})
@@ -34,7 +32,7 @@ func LoadTo(dbUrl string, events <-chan *inter.Event) (err error) {
 
 	session, err := db.Session(neo4j.AccessModeWrite)
 	if err != nil {
-		return
+		return err
 	}
 	defer session.Close()
 
@@ -52,14 +50,17 @@ func LoadTo(dbUrl string, events <-chan *inter.Event) (err error) {
 
 	// DML
 	var (
-		counter int
-		last    hash.Event
+		start    = time.Now().Add(-10 * time.Millisecond)
+		reported time.Time
+		counter  = ratecounter.NewRateCounter(60 * time.Second).WithResolution(1)
+		total    int64
+		last     hash.Event
 	)
 	for event := range events {
 		_, err = session.WriteTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
 
 			header := Marshal(&event.EventHeaderData)
-			log.Info("<<<", "event", header.String())
+			log.Debug("<<<", "event", header.String())
 			err = exec(ctx, "CREATE (e:Event %s)", header.String())
 			if err != nil {
 				return nil, err
@@ -80,19 +81,26 @@ func LoadTo(dbUrl string, events <-chan *inter.Event) (err error) {
 		})
 		if err != nil {
 			log.Error("<<<", "err", err)
-			return err
+			// return err
 		}
 
-		counter++
+		counter.Incr(1)
+		total++
 		last = event.Hash()
-		if counter%100 == 1 && time.Since(reported) >= statsReportLimit {
-			log.Info("<<<", "last", last.String(), "exported", counter, "elapsed", common.PrettyDuration(time.Since(start)))
+		if time.Since(reported) >= statsReportLimit {
+			log.Info("<<<", "last", last.String(),
+				"per second", counter.Rate()/60,
+				"total", total,
+				"elapsed", common.PrettyDuration(time.Since(start)))
 			reported = time.Now()
 		}
 	}
 
-	log.Info("Exported events", "last", last.String(), "exported", counter, "elapsed", common.PrettyDuration(time.Since(start)))
-	return
+	log.Info("Exported events", "last", last.String(),
+		"per second", total*1000/time.Since(start).Milliseconds(),
+		"total", total,
+		"elapsed", common.PrettyDuration(time.Since(start)))
+	return nil
 }
 
 type executor interface {
