@@ -24,12 +24,12 @@ var (
 		Flags: []cli.Flag{
 			dataDirFlag,
 		},
-		Action: actImport,
+		Action: cmd(actImport),
 		Usage:  "Import DAG from lachesis datadir into Neo4j.",
 	}
 )
 
-func actImport(cli *cli.Context) (err error) {
+func actImport(ctx context.Context, cli *cli.Context) (err error) {
 	dst := cli.GlobalString(neo4jUrlFlag.Name)
 	src := cli.String(dataDirFlag.Name)
 	from := idx.Epoch(1)
@@ -49,13 +49,7 @@ func actImport(cli *cli.Context) (err error) {
 		to = idx.Epoch(n)
 	}
 
-	ctx, stop := context.WithCancel(context.Background())
-	go func() {
-		defer stop()
-		events := source.Events(ctx, src, from, to)
-		err = neo4j.LoadTo(dst, events)
-	}()
-
-	waitForInterrupt(ctx)
+	events := source.Events(ctx, src, from, to)
+	err = neo4j.LoadTo(dst, events)
 	return
 }

@@ -19,12 +19,12 @@ var (
 		Flags: []cli.Flag{
 			neo4jUrlFlag,
 		},
-		Action: actReadNeo4j,
+		Action: cmd(actReadNeo4j),
 		Usage:  "Read DAG from Neo4j db to compare performance with KV db.",
 	}
 )
 
-func actReadNeo4j(cli *cli.Context) (err error) {
+func actReadNeo4j(ctx context.Context, cli *cli.Context) (err error) {
 	src := cli.String(neo4jUrlFlag.Name)
 	if src == "" {
 		src = cli.GlobalString(neo4jUrlFlag.Name)
@@ -36,19 +36,14 @@ func actReadNeo4j(cli *cli.Context) (err error) {
 		return
 	}
 
-	ctx, stop := context.WithCancel(context.Background())
-	go func() {
-		defer stop()
-		start := time.Now()
-		log.Info("Data from Neo4j", "database", src, "event", event)
-		var ancestors []hash.Event
-		ancestors, err = neo4j.FindAncestors(src, event)
-		if err != nil {
-			return
-		}
-		log.Info("Data from Neo4j", "ancestors", len(ancestors), "elapsed", common.PrettyDuration(time.Since(start)))
-	}()
+	start := time.Now()
+	log.Info("Data from Neo4j", "database", src, "event", event)
+	var ancestors []hash.Event
+	ancestors, err = neo4j.FindAncestors(src, event)
+	if err != nil {
+		return
+	}
+	log.Info("Data from Neo4j", "ancestors", len(ancestors), "elapsed", common.PrettyDuration(time.Since(start)))
 
-	waitForInterrupt(ctx)
 	return
 }
