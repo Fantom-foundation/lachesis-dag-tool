@@ -15,7 +15,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 )
 
-func Events(ctx context.Context, dataDir string, from, to idx.Epoch) <-chan *inter.Event {
+func EventsFromDatadir(ctx context.Context, dataDir string, from, to idx.Epoch) <-chan *inter.Event {
 	log.Info("Events of epoches", "from", from, "to", to, "datadir", dataDir)
 	output := make(chan *inter.Event, 10)
 

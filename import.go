@@ -27,29 +27,71 @@ var (
 		Action: cmd(actImport),
 		Usage:  "Import DAG from lachesis datadir into Neo4j.",
 	}
+
+	networkFlag = cli.StringFlag{
+		Name:  "net",
+		Usage: "Lachesis network name (main or test)",
+		Value: "main",
+	}
+
+	cmdListen = cli.Command{
+		Name:      "listen",
+		ShortName: "l",
+		Flags: []cli.Flag{
+			networkFlag,
+		},
+		Action: cmd(actListen),
+		Usage:  "Listen lachesis p2p network and write DAG into Neo4j.",
+	}
 )
 
 func actImport(ctx context.Context, cli *cli.Context) (err error) {
 	dst := cli.GlobalString(neo4jUrlFlag.Name)
 	src := cli.String(dataDirFlag.Name)
-	from := idx.Epoch(1)
+
+	from, to, err := parseEpochArgs(cli)
+	if err != nil {
+		return
+	}
+
+	events := source.EventsFromDatadir(ctx, src, from, to)
+	err = neo4j.LoadTo(dst, events)
+	return
+}
+
+func actListen(ctx context.Context, cli *cli.Context) (err error) {
+	dst := cli.GlobalString(neo4jUrlFlag.Name)
+	network := cli.String(networkFlag.Name)
+	from, to, err := parseEpochArgs(cli)
+	if err != nil {
+		return
+	}
+
+	events := source.EventsFromP2p(ctx, network, from, to)
+	err = neo4j.LoadTo(dst, events)
+	return
+}
+
+func parseEpochArgs(cli *cli.Context) (from, to idx.Epoch, err error) {
+	var n uint64
+
+	from = idx.Epoch(1)
 	if len(cli.Args()) > 0 {
-		n, err := strconv.ParseUint(cli.Args().Get(0), 10, 32)
+		n, err = strconv.ParseUint(cli.Args().Get(0), 10, 32)
 		if err != nil {
-			return err
+			return
 		}
 		from = idx.Epoch(n)
 	}
-	to := idx.Epoch(0)
+
+	to = idx.Epoch(0)
 	if len(cli.Args()) > 1 {
-		n, err := strconv.ParseUint(cli.Args().Get(1), 10, 32)
+		n, err = strconv.ParseUint(cli.Args().Get(1), 10, 32)
 		if err != nil {
-			return err
+			return
 		}
 		to = idx.Epoch(n)
 	}
 
-	events := source.Events(ctx, src, from, to)
-	err = neo4j.LoadTo(dst, events)
 	return
 }
