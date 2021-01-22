@@ -2,6 +2,7 @@ package source
 
 import (
 	"context"
+	"fmt"
 	"io/ioutil"
 	"sync"
 
@@ -20,6 +21,10 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethereum/go-ethereum/p2p/nat"
+)
+
+const (
+	protocolMaxMsgSize = 10 * 1024 * 1024 // Maximum cap on the size of a protocol message
 )
 
 func EventsFromP2p(ctx context.Context, network string, from, to idx.Epoch) <-chan *inter.Event {
@@ -85,6 +90,8 @@ type service struct {
 	p2pServer  *p2p.Server
 	serverPool *gossip.ServerPool
 
+	peers *gossip.PeerSet
+
 	done chan struct{}
 	wg   sync.WaitGroup
 }
@@ -109,6 +116,8 @@ func newService(network string, output chan<- *inter.Event) *service {
 		net:     net,
 		genesis: genesis,
 		output:  output,
+
+		peers: gossip.NewPeerSet(),
 
 		done: make(chan struct{}),
 	}
@@ -136,22 +145,6 @@ func (s *service) Start() error {
 	s.serverPool.Start(s.p2pServer, topic)
 
 	return nil
-}
-
-func parseBootstrapNodes(urls []string) []*discv5.Node {
-	nodes := make([]*discv5.Node, 0, len(urls))
-	for _, url := range urls {
-		if url == "" {
-			continue
-		}
-		node, err := discv5.ParseNode(url)
-		if err != nil {
-			log.Error("Bootstrap URL invalid", "enode", url, "err", err)
-			continue
-		}
-		nodes = append(nodes, node)
-	}
-	return nodes
 }
 
 // Stop terminates all goroutines belonging to the service, blocking until they
@@ -184,28 +177,23 @@ func (s *service) makeProtocol(version uint) p2p.Protocol {
 				entry = s.serverPool.Connect(peer, peer.Node())
 			}
 			peer.PoolEntry = entry
-			/*
-				select {
-				case pm.newPeerCh <- peer:
-					pm.wg.Add(1)
-					defer pm.wg.Done()
-					err := pm.handle(peer)
-					if entry != nil {
-						s.serverPool.Disconnect(entry)
-					}
-					return err
-				case <-pm.quitSync:
-					if entry != nil {
-						s.serverPool.Disconnect(entry)
-					}
-					return p2p.DiscQuitting
+
+			select {
+			case <-s.done:
+				if entry != nil {
+					s.serverPool.Disconnect(entry)
 				}
-			*/
-			log.Warn("Connect to node", "addr", peer.RemoteAddr().String())
-			if entry != nil {
-				s.serverPool.Disconnect(entry)
+				return p2p.DiscQuitting
+			default:
+				//case pm.newPeerCh <- peer:
+				s.wg.Add(1)
+				defer s.wg.Done()
+				err := s.handle(peer)
+				if entry != nil {
+					s.serverPool.Disconnect(entry)
+				}
+				return err
 			}
-			return p2p.DiscQuitting
 		},
 		NodeInfo: func() interface{} {
 			return s.NodeInfo()
@@ -216,6 +204,59 @@ func (s *service) makeProtocol(version uint) p2p.Protocol {
 	}
 }
 
+// handle is the callback invoked to manage the life cycle of a peer. When
+// this function terminates, the peer is disconnected.
+func (s *service) handle(p *gossip.Peer) error {
+	if s.peers.Len() >= 3 {
+		return p2p.DiscTooManyPeers
+	}
+	p.Log().Debug("Peer connected", "name", p.Name())
+
+	// Execute the handshake
+	var (
+		myProgress gossip.PeerProgress // TODO: set
+	)
+	if err := p.Handshake(s.net.NetworkID, myProgress, s.genesis); err != nil {
+		p.Log().Debug("Handshake failed", "err", err)
+		return err
+	}
+
+	if err := s.peers.Register(p); err != nil {
+		p.Log().Warn("Peer registration failed", "err", err)
+		return err
+	}
+	defer func() {
+		log.Debug("Removing peer", "name", p.Name())
+		if err := s.peers.Unregister(p); err != nil {
+			log.Error("Peer removal failed", "name", p.Name(), "err", err)
+		}
+		p.Peer.Disconnect(p2p.DiscUselessPeer)
+	}()
+
+	for {
+		if err := s.handleMsg(p); err != nil {
+			p.Log().Debug("Message handling failed", "err", err)
+			return err
+		}
+	}
+}
+
+// handleMsg is invoked whenever an inbound message is received from a remote
+// peer. The remote connection is torn down upon returning any error.
+func (s *service) handleMsg(p *gossip.Peer) error {
+	// Read the next message from the remote peer, and ensure it's fully consumed
+	msg, err := p.ReadMsg()
+	if err != nil {
+		return err
+	}
+	if msg.Size > protocolMaxMsgSize {
+		return errResp(gossip.ErrMsgTooLarge, "%v > %v", msg.Size, protocolMaxMsgSize)
+	}
+	defer msg.Discard()
+
+	return nil
+}
+
 // NodeInfo retrieves some protocol metadata about the running host node.
 func (s *service) NodeInfo() *gossip.NodeInfo {
 	return &gossip.NodeInfo{
@@ -224,4 +265,24 @@ func (s *service) NodeInfo() *gossip.NodeInfo {
 		Epoch:       1,
 		NumOfBlocks: 0,
 	}
+}
+
+func parseBootstrapNodes(urls []string) []*discv5.Node {
+	nodes := make([]*discv5.Node, 0, len(urls))
+	for _, url := range urls {
+		if url == "" {
+			continue
+		}
+		node, err := discv5.ParseNode(url)
+		if err != nil {
+			log.Error("Bootstrap URL invalid", "enode", url, "err", err)
+			continue
+		}
+		nodes = append(nodes, node)
+	}
+	return nodes
+}
+
+func errResp(code int, format string, v ...interface{}) error {
+	return fmt.Errorf("%v - %v", code, fmt.Sprintf(format, v...))
 }
