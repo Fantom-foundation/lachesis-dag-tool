@@ -5,8 +5,13 @@ import (
 	"fmt"
 	"io/ioutil"
 	"sync"
+	"time"
 
 	"github.com/Fantom-foundation/go-lachesis/gossip"
+	"github.com/Fantom-foundation/go-lachesis/gossip/fetcher"
+	"github.com/Fantom-foundation/go-lachesis/gossip/ordering"
+	"github.com/Fantom-foundation/go-lachesis/gossip/packsdownloader"
+	"github.com/Fantom-foundation/go-lachesis/hash"
 	"github.com/Fantom-foundation/go-lachesis/inter"
 	"github.com/Fantom-foundation/go-lachesis/inter/idx"
 	"github.com/Fantom-foundation/go-lachesis/kvdb/memorydb"
@@ -24,7 +29,10 @@ import (
 )
 
 const (
-	protocolMaxMsgSize = 10 * 1024 * 1024 // Maximum cap on the size of a protocol message
+	// the maximum cap on the size of a protocol message
+	protocolMaxMsgSize = 10 * 1024 * 1024
+	// the maximum number of events in the ordering buffer
+	eventsBuffSize = 2048
 )
 
 func EventsFromP2p(ctx context.Context, network string, from, to idx.Epoch) <-chan *inter.Event {
@@ -90,7 +98,9 @@ type service struct {
 	p2pServer  *p2p.Server
 	serverPool *gossip.ServerPool
 
-	peers *gossip.PeerSet
+	peers      *gossip.PeerSet
+	downloader *packsdownloader.PacksDownloader
+	fetcher    *fetcher.Fetcher
 
 	done chan struct{}
 	wg   sync.WaitGroup
@@ -126,6 +136,34 @@ func newService(network string, output chan<- *inter.Event) *service {
 	db := memorydb.New()
 	svc.serverPool = gossip.NewServerPool(db, svc.done, &svc.wg, trustedNodes)
 
+	buffer := ordering.New(eventsBuffSize, ordering.Callback{
+		Process: func(e *inter.Event) error {
+			log.Info("New event", "id", e.Hash(), "parents", len(e.Parents), "by", e.Creator, "frame", inter.FmtFrame(e.Frame, e.IsRoot), "txs", e.Transactions.Len())
+			output <- e
+			return nil
+		},
+		Drop: func(e *inter.Event, peer string, err error) {
+		},
+		Exists: func(id hash.Event) bool {
+			return false // TODO: check
+		},
+		Get: func(id hash.Event) *inter.EventHeaderData {
+			return nil
+		},
+		Check: func(e *inter.Event, parents []*inter.EventHeaderData) error {
+			return nil
+		},
+	})
+
+	svc.fetcher = fetcher.New(fetcher.Callback{
+		PushEvent:      buffer.PushEvent,
+		OnlyInterested: svc.onlyInterestedEvents,
+		DropPeer:       svc.removePeer,
+		// FirstCheck:     firstCheck,
+		// HeavyCheck:     checkers.Heavycheck,
+	})
+	svc.downloader = packsdownloader.New(svc.fetcher, svc.onlyNotConnectedEvents, svc.removePeer)
+
 	return svc
 }
 
@@ -150,6 +188,9 @@ func (s *service) Start() error {
 // Stop terminates all goroutines belonging to the service, blocking until they
 // are all terminated.
 func (s *service) Stop() error {
+	s.downloader.Terminate()
+	s.fetcher.Stop()
+
 	close(s.done)
 	s.wg.Wait()
 	return nil
@@ -225,13 +266,7 @@ func (s *service) handle(p *gossip.Peer) error {
 		p.Log().Warn("Peer registration failed", "err", err)
 		return err
 	}
-	defer func() {
-		log.Debug("Removing peer", "name", p.Name())
-		if err := s.peers.Unregister(p); err != nil {
-			log.Error("Peer removal failed", "name", p.Name(), "err", err)
-		}
-		p.Peer.Disconnect(p2p.DiscUselessPeer)
-	}()
+	defer s.removePeer(p.Uid)
 
 	for {
 		if err := s.handleMsg(p); err != nil {
@@ -254,7 +289,96 @@ func (s *service) handleMsg(p *gossip.Peer) error {
 	}
 	defer msg.Discard()
 
+	switch msg.Code {
+
+	case gossip.ProgressMsg:
+		var progress gossip.PeerProgress
+		if err := msg.Decode(&progress); err != nil {
+			return errResp(gossip.ErrDecode, "%v: %v", msg, err)
+		}
+		p.SetProgress(progress)
+
+		var (
+			myProgress gossip.PeerProgress // TODO: set
+		)
+
+		// notify downloader about new peer's epoch
+		_ = s.downloader.RegisterPeer(packsdownloader.Peer{
+			ID:               p.Uid,
+			Epoch:            p.Progress.Epoch,
+			RequestPack:      p.RequestPack,
+			RequestPackInfos: p.RequestPackInfos,
+		}, myProgress.Epoch)
+		peerDwnlr := s.downloader.Peer(p.Uid)
+
+		if peerDwnlr != nil && progress.LastPackInfo.Index > 0 {
+			_ = peerDwnlr.NotifyPackInfo(p.Progress.Epoch, progress.LastPackInfo.Index, progress.LastPackInfo.Heads, time.Now())
+		}
+	}
+
 	return nil
+}
+
+func (s *service) removePeer(id string) {
+	// Short circuit if the peer was already removed
+	peer := s.peers.Peer(id)
+	if peer == nil {
+		return
+	}
+	log.Debug("Removing peer", "peer", id)
+
+	// Unregister the peer from the downloader and peer set
+	_ = s.downloader.UnregisterPeer(id)
+	if err := s.peers.Unregister(id); err != nil {
+		log.Error("Peer removal failed", "peer", id, "err", err)
+	}
+	// Hard disconnect at the networking layer
+	if peer != nil {
+		peer.Peer.Disconnect(p2p.DiscUselessPeer)
+	}
+}
+
+func (s *service) onlyNotConnectedEvents(ids hash.Events) hash.Events {
+	if len(ids) == 0 {
+		return ids
+	}
+
+	return ids
+	// TODO:
+	/*
+		notConnected := make(hash.Events, 0, len(ids))
+		for _, id := range ids {
+			if pm.store.HasEventHeader(id) {
+				continue
+			}
+			notConnected.Add(id)
+		}
+		return notConnected
+	*/
+}
+
+func (s *service) onlyInterestedEvents(ids hash.Events) hash.Events {
+	if len(ids) == 0 {
+		return ids
+	}
+
+	return ids
+	// TODO:
+	/*
+		epoch := pm.engine.GetEpoch()
+
+		interested := make(hash.Events, 0, len(ids))
+		for _, id := range ids {
+			if id.Epoch() != epoch {
+				continue
+			}
+			if pm.buffer.IsBuffered(id) || pm.store.HasEventHeader(id) {
+				continue
+			}
+			interested.Add(id)
+		}
+		return interested
+	*/
 }
 
 // NodeInfo retrieves some protocol metadata about the running host node.
