@@ -33,6 +33,13 @@ const (
 	protocolMaxMsgSize = 10 * 1024 * 1024
 	// the maximum number of events in the ordering buffer
 	eventsBuffSize = 2048
+
+	softResponseLimitSize = 2 * 1024 * 1024    // Target maximum size of returned events, or other data.
+	softLimitItems        = 250                // Target maximum number of events or transactions to request/response
+	hardLimitItems        = softLimitItems * 4 // Maximum number of events or transactions to request/response
+
+	maxPackSize      = softResponseLimitSize
+	maxPackEventsNum = softLimitItems
 )
 
 func EventsFromP2p(ctx context.Context, network string, from, to idx.Epoch) <-chan *inter.Event {
@@ -101,6 +108,7 @@ type service struct {
 	peers      *gossip.PeerSet
 	downloader *packsdownloader.PacksDownloader
 	fetcher    *fetcher.Fetcher
+	progress   gossip.PeerProgress
 
 	done chan struct{}
 	wg   sync.WaitGroup
@@ -139,6 +147,7 @@ func newService(network string, output chan<- *inter.Event) *service {
 	buffer := ordering.New(eventsBuffSize, ordering.Callback{
 		Process: func(e *inter.Event) error {
 			log.Info("New event", "id", e.Hash(), "parents", len(e.Parents), "by", e.Creator, "frame", inter.FmtFrame(e.Frame, e.IsRoot), "txs", e.Transactions.Len())
+			svc.packsOnNewEvent(e, e.Epoch)
 			output <- e
 			return nil
 		},
@@ -159,8 +168,8 @@ func newService(network string, output chan<- *inter.Event) *service {
 		PushEvent:      buffer.PushEvent,
 		OnlyInterested: svc.onlyInterestedEvents,
 		DropPeer:       svc.removePeer,
-		// FirstCheck:     firstCheck,
-		// HeavyCheck:     checkers.Heavycheck,
+		FirstCheck:     func(*inter.Event) error { return nil },
+		HeavyCheck:     nil,
 	})
 	svc.downloader = packsdownloader.New(svc.fetcher, svc.onlyNotConnectedEvents, svc.removePeer)
 
@@ -226,7 +235,6 @@ func (s *service) makeProtocol(version uint) p2p.Protocol {
 				}
 				return p2p.DiscQuitting
 			default:
-				//case pm.newPeerCh <- peer:
 				s.wg.Add(1)
 				defer s.wg.Done()
 				err := s.handle(peer)
@@ -251,13 +259,9 @@ func (s *service) handle(p *gossip.Peer) error {
 	if s.peers.Len() >= 3 {
 		return p2p.DiscTooManyPeers
 	}
-	p.Log().Debug("Peer connected", "name", p.Name())
+	p.Log().Info("Peer connected", "name", p.Name())
 
-	// Execute the handshake
-	var (
-		myProgress gossip.PeerProgress // TODO: set
-	)
-	if err := p.Handshake(s.net.NetworkID, myProgress, s.genesis); err != nil {
+	if err := p.Handshake(s.net.NetworkID, s.progress, s.genesis); err != nil {
 		p.Log().Debug("Handshake failed", "err", err)
 		return err
 	}
@@ -269,6 +273,11 @@ func (s *service) handle(p *gossip.Peer) error {
 	defer s.removePeer(p.Uid)
 
 	for {
+		select {
+		case <-s.done:
+			return p2p.DiscQuitting
+		default:
+		}
 		if err := s.handleMsg(p); err != nil {
 			p.Log().Debug("Message handling failed", "err", err)
 			return err
@@ -289,7 +298,25 @@ func (s *service) handleMsg(p *gossip.Peer) error {
 	}
 	defer msg.Discard()
 
+	peerDwnlr := s.downloader.Peer(p.Uid)
+
 	switch msg.Code {
+
+	case gossip.EthStatusMsg:
+		// Status messages should never arrive after the handshake
+		return errResp(gossip.ErrExtraStatusMsg, "uncontrolled status message")
+	case gossip.NewEventHashesMsg:
+		break
+	case gossip.EventsMsg:
+		break
+	case gossip.EvmTxMsg:
+		break
+	case gossip.GetEventsMsg:
+		break
+	case gossip.GetPackInfosMsg:
+		break
+	case gossip.GetPackMsg:
+		break
 
 	case gossip.ProgressMsg:
 		var progress gossip.PeerProgress
@@ -297,10 +324,7 @@ func (s *service) handleMsg(p *gossip.Peer) error {
 			return errResp(gossip.ErrDecode, "%v: %v", msg, err)
 		}
 		p.SetProgress(progress)
-
-		var (
-			myProgress gossip.PeerProgress // TODO: set
-		)
+		log.Warn("ProgressMsg", "progress", progress)
 
 		// notify downloader about new peer's epoch
 		_ = s.downloader.RegisterPeer(packsdownloader.Peer{
@@ -308,12 +332,71 @@ func (s *service) handleMsg(p *gossip.Peer) error {
 			Epoch:            p.Progress.Epoch,
 			RequestPack:      p.RequestPack,
 			RequestPackInfos: p.RequestPackInfos,
-		}, myProgress.Epoch)
+		}, s.progress.Epoch)
 		peerDwnlr := s.downloader.Peer(p.Uid)
 
 		if peerDwnlr != nil && progress.LastPackInfo.Index > 0 {
 			_ = peerDwnlr.NotifyPackInfo(p.Progress.Epoch, progress.LastPackInfo.Index, progress.LastPackInfo.Heads, time.Now())
 		}
+
+	case gossip.PackInfosMsg:
+		if peerDwnlr == nil {
+			break
+		}
+
+		var infos gossip.PackInfosData
+		if err := msg.Decode(&infos); err != nil {
+			return errResp(gossip.ErrDecode, "%v: %v", msg, err)
+		}
+		if err := checkLenLimits(len(infos.Infos), infos); err != nil {
+			return err
+		}
+		log.Warn("PackInfosData", "infos", infos)
+
+		// notify about number of packs this peer has
+		_ = peerDwnlr.NotifyPacksNum(infos.Epoch, infos.TotalNumOfPacks)
+
+		for _, info := range infos.Infos {
+			if len(info.Heads) == 0 {
+				return errResp(gossip.ErrEmptyMessage, "%v", msg)
+			}
+			// Mark the hashes as present at the remote node
+			for _, id := range info.Heads {
+				p.MarkEvent(id)
+			}
+			// Notify downloader about new packInfo
+			_ = peerDwnlr.NotifyPackInfo(infos.Epoch, info.Index, info.Heads, time.Now())
+		}
+
+	case gossip.PackMsg:
+		if peerDwnlr == nil {
+			break
+		}
+
+		var pack gossip.PackData
+		if err := msg.Decode(&pack); err != nil {
+			return errResp(gossip.ErrDecode, "%v: %v", msg, err)
+		}
+		if err := checkLenLimits(len(pack.IDs), pack); err != nil {
+			return err
+		}
+		if len(pack.IDs) == 0 {
+			return errResp(gossip.ErrDecode, "%v: %v", msg, err)
+		}
+
+		log.Warn("PackData", "pack", pack)
+
+		// Mark the hashes as present at the remote node
+		for _, id := range pack.IDs {
+			p.MarkEvent(id)
+		}
+		// Notify downloader about new pack
+		_ = peerDwnlr.NotifyPack(pack.Epoch, pack.Index, pack.IDs, time.Now(), p.RequestEvents)
+
+	default:
+		err := errResp(gossip.ErrInvalidMsgCode, "%v", msg.Code)
+		return err
+
 	}
 
 	return nil
@@ -342,7 +425,6 @@ func (s *service) onlyNotConnectedEvents(ids hash.Events) hash.Events {
 	if len(ids) == 0 {
 		return ids
 	}
-
 	return ids
 	// TODO:
 	/*
@@ -361,7 +443,6 @@ func (s *service) onlyInterestedEvents(ids hash.Events) hash.Events {
 	if len(ids) == 0 {
 		return ids
 	}
-
 	return ids
 	// TODO:
 	/*
@@ -378,6 +459,43 @@ func (s *service) onlyInterestedEvents(ids hash.Events) hash.Events {
 			interested.Add(id)
 		}
 		return interested
+	*/
+}
+
+func (s *service) packsOnNewEvent(e *inter.Event, epoch idx.Epoch) {
+	/*
+		// due to default values, we don't need to explicitly set values at a start of an epoch
+		packIdx := s.store.GetPacksNumOrDefault(epoch)
+		packInfo := s.store.GetPackInfoOrDefault(s.engine.GetEpoch(), packIdx)
+
+		s.store.AddToPack(epoch, packIdx, e.Hash())
+
+		packInfo.Index = packIdx
+		packInfo.NumOfEvents++
+		packInfo.Size += uint32(e.Size())
+		if packInfo.NumOfEvents >= maxPackEventsNum || packInfo.Size >= maxPackSize {
+			// pin the s.store.GetHeads()
+			packInfo.Heads = s.store.GetHeads(epoch)
+			s.store.SetPacksNum(epoch, packIdx+1)
+
+			_ = s.feed.newPack.Send(packIdx + 1) // notify about new pack
+		}
+		s.store.SetPackInfo(epoch, packIdx, packInfo)
+	*/
+}
+
+func (s *service) packsOnNewEpoch(oldEpoch, newEpoch idx.Epoch) {
+	/*
+		// pin the last pack
+		packIdx := s.store.GetPacksNumOrDefault(oldEpoch)
+		packInfo := s.store.GetPackInfoOrDefault(s.engine.GetEpoch(), packIdx)
+
+		packInfo.Heads = s.store.GetHeads(oldEpoch)
+		s.store.SetPackInfo(oldEpoch, packIdx, packInfo)
+
+		s.store.SetPacksNum(oldEpoch, packIdx+1) // the last pack is always not pinned, so create not pinned one
+
+		_ = s.feed.newPack.Send(packIdx + 1)
 	*/
 }
 
@@ -409,4 +527,14 @@ func parseBootstrapNodes(urls []string) []*discv5.Node {
 
 func errResp(code int, format string, v ...interface{}) error {
 	return fmt.Errorf("%v - %v", code, fmt.Sprintf(format, v...))
+}
+
+func checkLenLimits(size int, v interface{}) error {
+	if size <= 0 {
+		return errResp(gossip.ErrEmptyMessage, "%v", v)
+	}
+	if size > hardLimitItems {
+		return errResp(gossip.ErrMsgTooLarge, "%v", v)
+	}
+	return nil
 }
