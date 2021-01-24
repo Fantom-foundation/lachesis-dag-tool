@@ -140,6 +140,9 @@ func newService(network string, output chan<- *inter.Event) *service {
 		done: make(chan struct{}),
 	}
 
+	// TODO: read from db
+	svc.progress.Epoch = 1
+
 	trustedNodes := []string{}
 	db := memorydb.New()
 	svc.serverPool = gossip.NewServerPool(db, svc.done, &svc.wg, trustedNodes)
@@ -190,6 +193,7 @@ func (s *service) Start() error {
 	}
 
 	s.serverPool.Start(s.p2pServer, topic)
+	s.fetcher.Start()
 
 	return nil
 }
@@ -307,8 +311,6 @@ func (s *service) handleMsg(p *gossip.Peer) error {
 		return errResp(gossip.ErrExtraStatusMsg, "uncontrolled status message")
 	case gossip.NewEventHashesMsg:
 		break
-	case gossip.EventsMsg:
-		break
 	case gossip.EvmTxMsg:
 		break
 	case gossip.GetEventsMsg:
@@ -324,7 +326,6 @@ func (s *service) handleMsg(p *gossip.Peer) error {
 			return errResp(gossip.ErrDecode, "%v: %v", msg, err)
 		}
 		p.SetProgress(progress)
-		log.Warn("ProgressMsg", "progress", progress)
 
 		// notify downloader about new peer's epoch
 		_ = s.downloader.RegisterPeer(packsdownloader.Peer{
@@ -334,7 +335,6 @@ func (s *service) handleMsg(p *gossip.Peer) error {
 			RequestPackInfos: p.RequestPackInfos,
 		}, s.progress.Epoch)
 		peerDwnlr := s.downloader.Peer(p.Uid)
-
 		if peerDwnlr != nil && progress.LastPackInfo.Index > 0 {
 			_ = peerDwnlr.NotifyPackInfo(p.Progress.Epoch, progress.LastPackInfo.Index, progress.LastPackInfo.Heads, time.Now())
 		}
@@ -351,7 +351,6 @@ func (s *service) handleMsg(p *gossip.Peer) error {
 		if err := checkLenLimits(len(infos.Infos), infos); err != nil {
 			return err
 		}
-		log.Warn("PackInfosData", "infos", infos)
 
 		// notify about number of packs this peer has
 		_ = peerDwnlr.NotifyPacksNum(infos.Epoch, infos.TotalNumOfPacks)
@@ -384,14 +383,31 @@ func (s *service) handleMsg(p *gossip.Peer) error {
 			return errResp(gossip.ErrDecode, "%v: %v", msg, err)
 		}
 
-		log.Warn("PackData", "pack", pack)
-
 		// Mark the hashes as present at the remote node
 		for _, id := range pack.IDs {
 			p.MarkEvent(id)
 		}
 		// Notify downloader about new pack
 		_ = peerDwnlr.NotifyPack(pack.Epoch, pack.Index, pack.IDs, time.Now(), p.RequestEvents)
+
+	case gossip.EventsMsg:
+		if s.fetcher.Overloaded() {
+			break
+		}
+		var events []*inter.Event
+		if err := msg.Decode(&events); err != nil {
+			return errResp(gossip.ErrDecode, "%v: %v", msg, err)
+		}
+		if err := checkLenLimits(len(events), events); err != nil {
+			return err
+		}
+
+		// Mark the hashes as present at the remote node
+		for _, e := range events {
+			p.MarkEvent(e.Hash())
+		}
+
+		_ = s.fetcher.Enqueue(p.Uid, events, time.Now(), p.RequestEvents)
 
 	default:
 		err := errResp(gossip.ErrInvalidMsgCode, "%v", msg.Code)
