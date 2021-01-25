@@ -13,9 +13,11 @@ import (
 	"github.com/Fantom-foundation/go-lachesis/inter/idx"
 	"github.com/Fantom-foundation/go-lachesis/kvdb/flushable"
 	"github.com/ethereum/go-ethereum/log"
+
+	"github.com/Fantom-foundation/lachesis-dag-tool/neo4j"
 )
 
-func EventsFromDatadir(ctx context.Context, dataDir string, from, to idx.Epoch) <-chan *inter.Event {
+func EventsFromDatadir(ctx context.Context, dataDir string, from, to idx.Epoch, store *neo4j.Store) <-chan *inter.Event {
 	log.Info("Events of epoches", "from", from, "to", to, "datadir", dataDir)
 	output := make(chan *inter.Event, 10)
 
@@ -29,6 +31,11 @@ func EventsFromDatadir(ctx context.Context, dataDir string, from, to idx.Epoch) 
 			if to >= from && event.Epoch > to {
 				return false
 			}
+
+			if store.HasEventHeader(event.Hash()) {
+				return true
+			}
+
 			select {
 			case <-ctx.Done():
 				return false

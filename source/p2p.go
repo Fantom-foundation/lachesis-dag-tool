@@ -26,6 +26,8 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethereum/go-ethereum/p2p/nat"
+
+	"github.com/Fantom-foundation/lachesis-dag-tool/neo4j"
 )
 
 const (
@@ -42,11 +44,11 @@ const (
 	maxPackEventsNum = softLimitItems
 )
 
-func EventsFromP2p(ctx context.Context, network string, from, to idx.Epoch) <-chan *inter.Event {
+func EventsFromP2p(ctx context.Context, network string, from, to idx.Epoch, store *neo4j.Store) <-chan *inter.Event {
 	log.Info("Events of epoches", "from", from, "to", to, "network", network)
 	output := make(chan *inter.Event, 10)
 
-	svc := newService(network, output)
+	svc := newService(network, output, store)
 	stack := newStack()
 	stack.RegisterProtocols(svc.Protocols())
 	stack.RegisterLifecycle(svc)
@@ -108,13 +110,15 @@ type service struct {
 	peers      *gossip.PeerSet
 	downloader *packsdownloader.PacksDownloader
 	fetcher    *fetcher.Fetcher
+	buffer     *ordering.EventBuffer
 	progress   gossip.PeerProgress
+	store      *neo4j.Store
 
 	done chan struct{}
 	wg   sync.WaitGroup
 }
 
-func newService(network string, output chan<- *inter.Event) *service {
+func newService(network string, output chan<- *inter.Event, store *neo4j.Store) *service {
 	var (
 		net     lachesis.Config
 		genesis common.Hash
@@ -136,6 +140,7 @@ func newService(network string, output chan<- *inter.Event) *service {
 		output:  output,
 
 		peers: gossip.NewPeerSet(),
+		store: store,
 
 		done: make(chan struct{}),
 	}
@@ -147,7 +152,7 @@ func newService(network string, output chan<- *inter.Event) *service {
 	db := memorydb.New()
 	svc.serverPool = gossip.NewServerPool(db, svc.done, &svc.wg, trustedNodes)
 
-	buffer := ordering.New(eventsBuffSize, ordering.Callback{
+	svc.buffer = ordering.New(eventsBuffSize, ordering.Callback{
 		Process: func(e *inter.Event) error {
 			log.Info("New event", "id", e.Hash(), "parents", len(e.Parents), "by", e.Creator, "frame", inter.FmtFrame(e.Frame, e.IsRoot), "txs", e.Transactions.Len())
 			svc.packsOnNewEvent(e, e.Epoch)
@@ -157,10 +162,10 @@ func newService(network string, output chan<- *inter.Event) *service {
 		Drop: func(e *inter.Event, peer string, err error) {
 		},
 		Exists: func(id hash.Event) bool {
-			return false // TODO: check
+			return svc.store.HasEventHeader(id)
 		},
 		Get: func(id hash.Event) *inter.EventHeaderData {
-			return nil
+			return nil // svc.store.GetEvent(id)
 		},
 		Check: func(e *inter.Event, parents []*inter.EventHeaderData) error {
 			return nil
@@ -168,7 +173,7 @@ func newService(network string, output chan<- *inter.Event) *service {
 	})
 
 	svc.fetcher = fetcher.New(fetcher.Callback{
-		PushEvent:      buffer.PushEvent,
+		PushEvent:      svc.buffer.PushEvent,
 		OnlyInterested: svc.onlyInterestedEvents,
 		DropPeer:       svc.removePeer,
 		FirstCheck:     func(*inter.Event) error { return nil },
@@ -441,41 +446,34 @@ func (s *service) onlyNotConnectedEvents(ids hash.Events) hash.Events {
 	if len(ids) == 0 {
 		return ids
 	}
-	return ids
-	// TODO:
-	/*
-		notConnected := make(hash.Events, 0, len(ids))
-		for _, id := range ids {
-			if pm.store.HasEventHeader(id) {
-				continue
-			}
-			notConnected.Add(id)
+	notConnected := make(hash.Events, 0, len(ids))
+	for _, id := range ids {
+		if s.store.HasEventHeader(id) {
+			continue
 		}
-		return notConnected
-	*/
+		notConnected.Add(id)
+	}
+	return notConnected
 }
 
 func (s *service) onlyInterestedEvents(ids hash.Events) hash.Events {
 	if len(ids) == 0 {
 		return ids
 	}
-	return ids
-	// TODO:
-	/*
-		epoch := pm.engine.GetEpoch()
 
-		interested := make(hash.Events, 0, len(ids))
-		for _, id := range ids {
-			if id.Epoch() != epoch {
-				continue
-			}
-			if pm.buffer.IsBuffered(id) || pm.store.HasEventHeader(id) {
-				continue
-			}
-			interested.Add(id)
+	epoch := s.progress.Epoch
+
+	interested := make(hash.Events, 0, len(ids))
+	for _, id := range ids {
+		if id.Epoch() != epoch {
+			continue
 		}
-		return interested
-	*/
+		if s.buffer.IsBuffered(id) || s.store.HasEventHeader(id) {
+			continue
+		}
+		interested.Add(id)
+	}
+	return interested
 }
 
 func (s *service) packsOnNewEvent(e *inter.Event, epoch idx.Epoch) {

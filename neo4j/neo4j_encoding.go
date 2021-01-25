@@ -33,7 +33,7 @@ func Marshal(x interface{}) Fields {
 	switch e := x.(type) {
 	case *inter.EventHeaderData:
 		return Fields{
-			"hash":    fmt.Sprintf("'%s'", e.Hash().Hex()),
+			"id":      fmt.Sprintf("'%s'", e.Hash().FullID()),
 			"creator": fmt.Sprintf("%d", e.Creator),
 		}
 	default:

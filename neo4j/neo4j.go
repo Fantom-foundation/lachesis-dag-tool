@@ -20,60 +20,109 @@ const (
 	statsReportLimit = 8 * time.Second
 )
 
-// LoadTo Neo4j from events chain.
-func LoadTo(dbUrl string, events <-chan *inter.Event) error {
+type Store struct {
+	db neo4j.Driver
+}
+
+func New(dbUrl string) (*Store, error) {
 	db, err := neo4j.NewDriver(dbUrl, neo4j.NoAuth(), func(c *neo4j.Config) {
 		c.Encrypted = false
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer db.Close()
 
 	session, err := db.Session(neo4j.AccessModeWrite)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer session.Close()
-
 	// DDL
 	_, err = session.WriteTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
-		err := exec(ctx, "CREATE CONSTRAINT ON (e:Event) ASSERT e.hash IS UNIQUE")
+		err := exec(ctx, "CREATE CONSTRAINT ON (e:Event) ASSERT e.id IS UNIQUE")
 		if err != nil {
 			return nil, err
 		}
 		return nil, nil
 	})
 	if err != nil {
-		log.Warn(err.Error())
+		log.Warn("DDL", "err", err)
 	}
 
+	s := &Store{
+		db: db,
+	}
+	return s, nil
+}
+
+func (s *Store) Close() error {
+	return s.db.Close()
+}
+
+func (s *Store) HasEventHeader(e hash.Event) bool {
+	session, err := s.db.Session(neo4j.AccessModeRead)
+	if err != nil {
+		panic(err)
+	}
+	defer session.Close()
+
+	id := e.FullID()
+
+	res, err := session.ReadTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
+		res, err := search(ctx, `MATCH (e:Event {id:'%s'}) RETURN e`, id)
+		if err != nil {
+			return nil, err
+		}
+
+		for res.Next() {
+			return true, nil
+		}
+		return false, nil
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	if res.(bool) {
+		log.Info("??? has", "id", id)
+	}
+
+	return res.(bool)
+}
+
+// Load data from events chain.
+func (s *Store) Load(events <-chan *inter.Event) error {
+	session, err := s.db.Session(neo4j.AccessModeWrite)
+	if err != nil {
+		return err
+	}
+	defer session.Close()
 	// DML
 	var (
 		start    = time.Now().Add(-10 * time.Millisecond)
 		reported time.Time
 		counter  = ratecounter.NewRateCounter(60 * time.Second).WithResolution(1)
 		total    int64
-		last     hash.Event
+		last     string
 	)
 	for event := range events {
+		id := event.Hash().FullID()
 		_, err = session.WriteTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
+			defer ctx.Close()
 
 			header := Marshal(&event.EventHeaderData)
 			log.Debug("<<<", "event", header.String())
 			err = exec(ctx, "CREATE (e:Event %s)", header.String())
 			if err != nil {
-				_ = ctx.Rollback()
 				return nil, err
 			}
 
 			for _, p := range event.Parents {
-				err = exec(ctx, `MATCH (e:Event {hash:'%s'}), (p:Event {hash:'%s'}) CREATE (e)-[:PARENT]->(p)`,
-					event.Hash().Hex(),
-					p.Hex(),
+				err = exec(ctx, `MATCH (e:Event {id:'%s'}), (p:Event {id:'%s'}) CREATE (e)-[:PARENT]->(p)`,
+					id,
+					p.FullID(),
 				)
 				if err != nil {
-					_ = ctx.Rollback()
 					return nil, err
 				}
 			}
@@ -82,15 +131,15 @@ func LoadTo(dbUrl string, events <-chan *inter.Event) error {
 
 		})
 		if err != nil {
-			log.Error("<<<", "err", err)
+			log.Error("<<<", "err", err, "event", id)
 			// return err
 		}
 
 		counter.Incr(1)
 		total++
-		last = event.Hash()
+		last = id
 		if time.Since(reported) >= statsReportLimit {
-			log.Info("<<<", "last", last.String(),
+			log.Info("<<<", "last", last,
 				"per second", counter.Rate()/60,
 				"total", total,
 				"elapsed", common.PrettyDuration(time.Since(start)))
@@ -98,7 +147,7 @@ func LoadTo(dbUrl string, events <-chan *inter.Event) error {
 		}
 	}
 
-	log.Info("Exported events", "last", last.String(),
+	log.Info("Exported events", "last", last,
 		"per second", total*1000/time.Since(start).Milliseconds(),
 		"total", total,
 		"elapsed", common.PrettyDuration(time.Since(start)))
@@ -106,16 +155,8 @@ func LoadTo(dbUrl string, events <-chan *inter.Event) error {
 }
 
 // FindAncestors of event.
-func FindAncestors(dbUrl string, event hash.Event) (ancestors []hash.Event, err error) {
-	db, err := neo4j.NewDriver(dbUrl, neo4j.NoAuth(), func(c *neo4j.Config) {
-		c.Encrypted = false
-	})
-	if err != nil {
-		return
-	}
-	defer db.Close()
-
-	session, err := db.Session(neo4j.AccessModeRead)
+func (s *Store) FindAncestors(event hash.Event) (ancestors []hash.Event, err error) {
+	session, err := s.db.Session(neo4j.AccessModeRead)
 	if err != nil {
 		return
 	}
@@ -145,12 +186,12 @@ func FindAncestors(dbUrl string, event hash.Event) (ancestors []hash.Event, err 
 func exec(ctx neo4j.Transaction, cypher string, a ...interface{}) error {
 	query := fmt.Sprintf(cypher, a...)
 	log.Debug("cypher", "query", query)
-	res, err := ctx.Run(query, nil)
+	_, err := ctx.Run(query, nil)
 	if err != nil {
 		return err
 	}
 
-	return res.Err()
+	return nil
 }
 
 func search(ctx neo4j.Transaction, cypher string, a ...interface{}) (neo4j.Result, error) {
@@ -161,5 +202,5 @@ func search(ctx neo4j.Transaction, cypher string, a ...interface{}) (neo4j.Resul
 		return nil, err
 	}
 
-	return res, res.Err()
+	return res, nil
 }

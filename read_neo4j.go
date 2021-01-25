@@ -36,10 +36,16 @@ func actReadNeo4j(ctx context.Context, cli *cli.Context) (err error) {
 		return
 	}
 
+	store, err := neo4j.New(src)
+	if err != nil {
+		return
+	}
+	defer store.Close()
+
 	start := time.Now()
 	log.Info("Data from Neo4j", "database", src, "event", event)
 	var ancestors []hash.Event
-	ancestors, err = neo4j.FindAncestors(src, event)
+	ancestors, err = store.FindAncestors(event)
 	if err != nil {
 		return
 	}

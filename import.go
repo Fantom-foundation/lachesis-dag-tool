@@ -48,14 +48,19 @@ var (
 func actImport(ctx context.Context, cli *cli.Context) (err error) {
 	dst := cli.GlobalString(neo4jUrlFlag.Name)
 	src := cli.String(dataDirFlag.Name)
-
 	from, to, err := parseEpochArgs(cli)
 	if err != nil {
 		return
 	}
 
-	events := source.EventsFromDatadir(ctx, src, from, to)
-	err = neo4j.LoadTo(dst, events)
+	store, err := neo4j.New(dst)
+	if err != nil {
+		return
+	}
+	defer store.Close()
+
+	events := source.EventsFromDatadir(ctx, src, from, to, store)
+	err = store.Load(events)
 	return
 }
 
@@ -67,8 +72,14 @@ func actListen(ctx context.Context, cli *cli.Context) (err error) {
 		return
 	}
 
-	events := source.EventsFromP2p(ctx, network, from, to)
-	err = neo4j.LoadTo(dst, events)
+	store, err := neo4j.New(dst)
+	if err != nil {
+		return
+	}
+	defer store.Close()
+
+	events := source.EventsFromP2p(ctx, network, from, to, store)
+	err = store.Load(events)
 	return
 }
 
