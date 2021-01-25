@@ -66,10 +66,12 @@ func (s *Store) HasEventHeader(e hash.Event) bool {
 	}
 	defer session.Close()
 
-	id := e.FullID()
+	id := eventID(e)
 
 	res, err := session.ReadTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
-		res, err := search(ctx, `MATCH (e:Event {id:'%s'}) RETURN e`, id)
+		res, err := search(ctx, `MATCH (e:Event %s) RETURN e`, fields{
+			"id": id,
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -84,10 +86,14 @@ func (s *Store) HasEventHeader(e hash.Event) bool {
 	}
 
 	if res.(bool) {
-		log.Info("??? has", "id", id)
+		log.Info("??? has", "id", e)
 	}
 
 	return res.(bool)
+}
+
+func (s *Store) GetEvent(e hash.Event) *inter.EventHeaderData {
+	return nil
 }
 
 // Load data from events chain.
@@ -103,24 +109,24 @@ func (s *Store) Load(events <-chan *inter.Event) error {
 		reported time.Time
 		counter  = ratecounter.NewRateCounter(60 * time.Second).WithResolution(1)
 		total    int64
-		last     string
+		last     hash.Event
 	)
 	for event := range events {
-		id := event.Hash().FullID()
+		id := eventID(event.Hash())
 		_, err = session.WriteTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
 			defer ctx.Close()
 
-			header := Marshal(&event.EventHeaderData)
-			log.Debug("<<<", "event", header.String())
-			err = exec(ctx, "CREATE (e:Event %s)", header.String())
+			data := marshal(&event.EventHeaderData)
+			log.Debug("<<<", "event", data)
+			err = exec(ctx, "CREATE (e:Event %s)", data)
 			if err != nil {
 				return nil, err
 			}
 
 			for _, p := range event.Parents {
-				err = exec(ctx, `MATCH (e:Event {id:'%s'}), (p:Event {id:'%s'}) CREATE (e)-[:PARENT]->(p)`,
-					id,
-					p.FullID(),
+				err = exec(ctx, `MATCH (e:Event %s), (p:Event %s) CREATE (e)-[:PARENT]->(p)`,
+					fields{"id": id},
+					fields{"id": eventID(p)},
 				)
 				if err != nil {
 					return nil, err
@@ -131,13 +137,13 @@ func (s *Store) Load(events <-chan *inter.Event) error {
 
 		})
 		if err != nil {
-			log.Error("<<<", "err", err, "event", id)
+			log.Error("<<<", "err", err, "event", event.Hash())
 			// return err
 		}
 
 		counter.Incr(1)
 		total++
-		last = id
+		last = event.Hash()
 		if time.Since(reported) >= statsReportLimit {
 			log.Info("<<<", "last", last,
 				"per second", counter.Rate()/60,
@@ -155,23 +161,27 @@ func (s *Store) Load(events <-chan *inter.Event) error {
 }
 
 // FindAncestors of event.
-func (s *Store) FindAncestors(event hash.Event) (ancestors []hash.Event, err error) {
+func (s *Store) FindAncestors(e hash.Event) (ancestors []hash.Event, err error) {
 	session, err := s.db.Session(neo4j.AccessModeRead)
 	if err != nil {
 		return
 	}
 	defer session.Close()
 
+	id := eventID(e)
+
 	res, err := session.ReadTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
-		res, err := search(ctx, "MATCH (p:Event {hash:'%s'})-[:PARENT*]->(s:Event) RETURN DISTINCT s.hash", event.Hex())
+		res, err := search(ctx, "MATCH (p:Event %s)-[:PARENT*]->(s:Event) RETURN DISTINCT s.id", fields{
+			"id": id,
+		})
 		if err != nil {
 			return nil, err
 		}
 
 		var ancestors []hash.Event
 		for res.Next() {
-			hex := res.Record().GetByIndex(0).(string)
-			ancestors = append(ancestors, hash.HexToEventHash(hex))
+			pid := res.Record().GetByIndex(0).(string)
+			ancestors = append(ancestors, eventHash(pid))
 		}
 		return ancestors, nil
 	})

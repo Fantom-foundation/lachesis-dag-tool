@@ -1,20 +1,34 @@
 package neo4j
 
 import (
-	"fmt"
+	"encoding/json"
 	"strings"
 
+	"github.com/Fantom-foundation/go-lachesis/inter/idx"
+
+	"github.com/Fantom-foundation/go-lachesis/hash"
 	"github.com/Fantom-foundation/go-lachesis/inter"
+	"github.com/neo4j/neo4j-go-driver/neo4j"
 )
 
-type Fields map[string]string
+type fields map[string]interface{}
 
-func (ff *Fields) String() string {
+func readFields(r neo4j.Record) fields {
+	ff := make(fields)
+	vals := r.Values()
+	for i, key := range r.Keys() {
+		ff[key] = vals[i]
+	}
+	return ff
+}
+
+func (ff fields) String() string {
+
 	buf := &strings.Builder{}
 
 	buf.WriteString("{")
 	first := true
-	for k, v := range *ff {
+	for k, v := range ff {
 		if !first {
 			buf.WriteString(",")
 		} else {
@@ -22,21 +36,50 @@ func (ff *Fields) String() string {
 		}
 		buf.WriteString(k)
 		buf.WriteString(":")
-		buf.WriteString(v)
+		buf.WriteString(valToString(v))
 	}
 	buf.WriteString("}")
-
 	return buf.String()
 }
 
-func Marshal(x interface{}) Fields {
+func valToString(v interface{}) string {
+	bb, err := json.Marshal(v)
+	if err != nil {
+		panic(err)
+	}
+
+	return string(bb)
+}
+
+// TODO: all the fields
+func marshal(x interface{}) fields {
 	switch e := x.(type) {
 	case *inter.EventHeaderData:
-		return Fields{
-			"id":      fmt.Sprintf("'%s'", e.Hash().FullID()),
-			"creator": fmt.Sprintf("%d", e.Creator),
+		return fields{
+			"id":      e.Hash().Hex(),
+			"creator": e.Creator,
 		}
 	default:
 		panic("unsupported type")
 	}
+}
+
+// TODO: all the fields
+func unmarshal(ff fields, x interface{}) {
+	switch e := x.(type) {
+	case *inter.EventHeaderData:
+		e.Creator = ff["creator"].(idx.StakerID)
+		return
+	default:
+		panic("unsupported type")
+	}
+}
+
+// eventID is a FullID() without aliases.
+func eventID(e hash.Event) string {
+	return e.Hex()
+}
+
+func eventHash(id string) hash.Event {
+	return hash.HexToEventHash(id)
 }

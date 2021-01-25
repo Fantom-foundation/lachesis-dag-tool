@@ -10,9 +10,11 @@ import (
 func TestMarshaling(t *testing.T) {
 	_ = require.New(t)
 
-	header := &inter.EventHeaderData{}
+	header := new(inter.EventHeaderData)
 	header.Creator = 9
 
-	fields := Marshal(header)
-	t.Log(fields.String())
+	ff := marshal(header)
+	t.Log(ff)
+
+	unmarshal(ff, header)
 }

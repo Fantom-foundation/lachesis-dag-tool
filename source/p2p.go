@@ -165,7 +165,7 @@ func newService(network string, output chan<- *inter.Event, store *neo4j.Store) 
 			return svc.store.HasEventHeader(id)
 		},
 		Get: func(id hash.Event) *inter.EventHeaderData {
-			return nil // svc.store.GetEvent(id)
+			return svc.store.GetEvent(id)
 		},
 		Check: func(e *inter.Event, parents []*inter.EventHeaderData) error {
 			return nil
