@@ -85,15 +85,62 @@ func (s *Store) HasEventHeader(e hash.Event) bool {
 		panic(err)
 	}
 
-	if res.(bool) {
-		log.Info("??? has", "id", e)
-	}
-
 	return res.(bool)
 }
 
 func (s *Store) GetEvent(e hash.Event) *inter.EventHeaderData {
-	return nil
+	session, err := s.db.Session(neo4j.AccessModeRead)
+	if err != nil {
+		panic(err)
+	}
+	defer session.Close()
+
+	id := eventID(e)
+
+	res, err := session.ReadTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
+		res, err := search(ctx, `MATCH (e:Event %s) RETURN e`, fields{
+			"id": id,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		for res.Next() {
+			ff := readFields(res.Record())
+			header := new(inter.EventHeaderData)
+			unmarshal(ff, header)
+			return header, nil
+		}
+		return nil, nil
+	})
+	if err != nil {
+		panic(err)
+	}
+	if res == nil {
+		return nil
+	}
+	event := res.(*inter.EventHeaderData)
+
+	res, err = session.ReadTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
+		res, err := search(ctx, `MATCH (e:Event %s)-[:PARENT]->(p) RETURN p.id`,
+			fields{"id": id},
+		)
+		if err != nil {
+			return nil, err
+		}
+		var parents hash.Events
+		for res.Next() {
+			hex := res.Record().GetByIndex(0).(string)
+			parents = append(parents, hash.HexToEventHash(hex))
+		}
+		return parents, nil
+	})
+	if err != nil {
+		panic(err)
+	}
+	event.Parents = res.(hash.Events)
+
+	return event
 }
 
 // Load data from events chain.
