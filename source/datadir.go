@@ -17,9 +17,9 @@ import (
 	"github.com/Fantom-foundation/lachesis-dag-tool/neo4j"
 )
 
-func EventsFromDatadir(ctx context.Context, dataDir string, from, to idx.Epoch, store *neo4j.Store) <-chan *inter.Event {
+func EventsFromDatadir(ctx context.Context, dataDir string, from, to idx.Epoch, store *neo4j.Store) <-chan *neo4j.EventData {
 	log.Info("Events of epoches", "from", from, "to", to, "datadir", dataDir)
-	output := make(chan *inter.Event, 10)
+	output := make(chan *neo4j.EventData, 10)
 
 	go func() {
 		defer close(output)
@@ -39,7 +39,7 @@ func EventsFromDatadir(ctx context.Context, dataDir string, from, to idx.Epoch, 
 			select {
 			case <-ctx.Done():
 				return false
-			case output <- event:
+			case output <- &neo4j.EventData{Event: event}:
 				log.Debug(">>>", "event", event.Hash())
 			}
 			return true

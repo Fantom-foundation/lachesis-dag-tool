@@ -165,7 +165,7 @@ func (s *Store) GetEvent(e hash.Event) *inter.EventHeaderData {
 }
 
 // Load data from events chain.
-func (s *Store) Load(events <-chan *inter.Event) error {
+func (s *Store) Load(events <-chan *EventData) error {
 	session, err := s.db.Session(neo4j.AccessModeWrite)
 	if err != nil {
 		return err
@@ -179,7 +179,8 @@ func (s *Store) Load(events <-chan *inter.Event) error {
 		total    int64
 		last     hash.Event
 	)
-	for event := range events {
+	for edata := range events {
+		event := edata.Event
 		id := eventID(event.Hash())
 		_, err = session.WriteTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
 			defer ctx.Close()
@@ -212,6 +213,9 @@ func (s *Store) Load(events <-chan *inter.Event) error {
 			// return err
 		}
 		s.cache.EventsHeaders.Add(event.Hash(), &event.EventHeaderData, 1)
+		if edata.Ready != nil {
+			edata.Ready()
+		}
 
 		counter.Incr(1)
 		total++

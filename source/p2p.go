@@ -44,9 +44,9 @@ const (
 	maxPackEventsNum = softLimitItems
 )
 
-func EventsFromP2p(ctx context.Context, network string, from, to idx.Epoch, store *neo4j.Store) <-chan *inter.Event {
+func EventsFromP2p(ctx context.Context, network string, from, to idx.Epoch, store *neo4j.Store) <-chan *neo4j.EventData {
 	log.Info("Events of epoches", "from", from, "to", to, "network", network)
-	output := make(chan *inter.Event, 10)
+	output := make(chan *neo4j.EventData, 1)
 
 	svc := newService(network, output, store)
 	stack := newStack()
@@ -101,7 +101,7 @@ func newStack() *node.Node {
 type service struct {
 	net     lachesis.Config
 	genesis common.Hash
-	output  chan<- *inter.Event
+	output  chan<- *neo4j.EventData
 
 	// server
 	p2pServer  *p2p.Server
@@ -118,7 +118,7 @@ type service struct {
 	wg   sync.WaitGroup
 }
 
-func newService(network string, output chan<- *inter.Event, store *neo4j.Store) *service {
+func newService(network string, output chan<- *neo4j.EventData, store *neo4j.Store) *service {
 	var (
 		net     lachesis.Config
 		genesis common.Hash
@@ -156,7 +156,11 @@ func newService(network string, output chan<- *inter.Event, store *neo4j.Store) 
 		Process: func(e *inter.Event) error {
 			// log.Info("New event", "id", e.Hash(), "parents", len(e.Parents), "by", e.Creator, "frame", inter.FmtFrame(e.Frame, e.IsRoot), "txs", e.Transactions.Len())
 			svc.packsOnNewEvent(e, e.Epoch)
-			output <- e
+
+			var wg sync.WaitGroup
+			wg.Add(1)
+			output <- &neo4j.EventData{Event: e, Ready: wg.Done}
+			wg.Wait()
 			return nil
 		},
 		Drop: func(e *inter.Event, peer string, err error) {
