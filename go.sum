@@ -18,6 +18,8 @@ github.com/Fantom-Foundation/go-ethereum v1.9.22-ftm-0.1 h1:8eeYgNPQ8vyW6Mh2dIIs
 github.com/Fantom-Foundation/go-ethereum v1.9.22-ftm-0.1/go.mod h1:27ZY0H7YdbxCL0E/d23qHo9WCkjqnmFKHQl9UaUSw8s=
 github.com/Fantom-foundation/go-lachesis v0.8.0-rc.2 h1:PhUzDr2LNnhHlwdPP5CkOSGeFP+KpHEDRi4LCpeml3A=
 github.com/Fantom-foundation/go-lachesis v0.8.0-rc.2/go.mod h1:cZ6s2AtXfvFE7fiF9JJYHsNFOvTb6k6iihyo7WagTbg=
+github.com/Fantom-foundation/lachesis-base v0.0.0-20201210130850-782ad52d6c4a h1:mK4JNxTwvj9VQSIOIQQmXSv2Uu0v7C+gp7w7Jnq2hqU=
+github.com/Fantom-foundation/lachesis-base v0.0.0-20201210130850-782ad52d6c4a/go.mod h1:E6+2LOvgADwSOv0U5YXhRJz4PlX8qJxvq8M93AOC1tM=
 github.com/OneOfOne/xxhash v1.2.2/go.mod h1:HSdplMjZKSmBqAxg5vPj2TmRDmfkzw+cTzAElWljhcU=
 github.com/Shopify/sarama v1.23.1/go.mod h1:XLH1GYJnLVE0XCr6KdJGVJRTwY30moWNJ4sERjXX6fs=
 github.com/Shopify/toxiproxy v2.1.4+incompatible/go.mod h1:OXgGpZ6Cli1/URJOF1DMxUHB2q5Ap20/P/eIdh4G0pI=

@@ -6,10 +6,12 @@ import (
 
 	"github.com/Fantom-foundation/go-lachesis/hash"
 	"github.com/Fantom-foundation/go-lachesis/inter"
+	"github.com/Fantom-foundation/lachesis-base/utils/wlru"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/neo4j/neo4j-go-driver/neo4j"
 	"github.com/paulbellamy/ratecounter"
+	"github.com/syndtr/goleveldb/leveldb/opt"
 )
 
 const (
@@ -21,7 +23,10 @@ const (
 )
 
 type Store struct {
-	db neo4j.Driver
+	db    neo4j.Driver
+	cache struct {
+		EventsHeaders *wlru.Cache
+	}
 }
 
 func New(dbUrl string) (*Store, error) {
@@ -52,6 +57,12 @@ func New(dbUrl string) (*Store, error) {
 	s := &Store{
 		db: db,
 	}
+
+	s.cache.EventsHeaders, err = wlru.New(5*opt.MiB, 500)
+	if err != nil {
+		panic(err)
+	}
+
 	return s, nil
 }
 
@@ -60,6 +71,11 @@ func (s *Store) Close() error {
 }
 
 func (s *Store) HasEventHeader(e hash.Event) bool {
+	// Get event from LRU cache first.
+	if _, ok := s.cache.EventsHeaders.Get(e); ok {
+		return true
+	}
+
 	session, err := s.db.Session(neo4j.AccessModeRead)
 	if err != nil {
 		panic(err)
@@ -89,6 +105,11 @@ func (s *Store) HasEventHeader(e hash.Event) bool {
 }
 
 func (s *Store) GetEvent(e hash.Event) *inter.EventHeaderData {
+	// Get event from LRU cache first.
+	if ev, ok := s.cache.EventsHeaders.Get(e); ok {
+		return ev.(*inter.EventHeaderData)
+	}
+
 	session, err := s.db.Session(neo4j.AccessModeRead)
 	if err != nil {
 		panic(err)
@@ -98,7 +119,7 @@ func (s *Store) GetEvent(e hash.Event) *inter.EventHeaderData {
 	id := eventID(e)
 
 	res, err := session.ReadTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
-		res, err := search(ctx, `MATCH (e:Event %s) RETURN e`, fields{
+		res, err := search(ctx, `MATCH (e:Event %s) RETURN e.id as id, e.creator as creator`, fields{
 			"id": id,
 		})
 		if err != nil {
@@ -130,8 +151,8 @@ func (s *Store) GetEvent(e hash.Event) *inter.EventHeaderData {
 		}
 		var parents hash.Events
 		for res.Next() {
-			hex := res.Record().GetByIndex(0).(string)
-			parents = append(parents, hash.HexToEventHash(hex))
+			p := eventHash(res.Record().GetByIndex(0).(string))
+			parents = append(parents, p)
 		}
 		return parents, nil
 	})
@@ -164,18 +185,21 @@ func (s *Store) Load(events <-chan *inter.Event) error {
 			defer ctx.Close()
 
 			data := marshal(&event.EventHeaderData)
-			log.Debug("<<<", "event", data)
+			log.Info("<<<", "event", event.Hash(), "ff", data)
 			err = exec(ctx, "CREATE (e:Event %s)", data)
 			if err != nil {
+				panic(err)
 				return nil, err
 			}
 
 			for _, p := range event.Parents {
+				log.Info("<<<", "event", event.Hash(), "parent", p)
 				err = exec(ctx, `MATCH (e:Event %s), (p:Event %s) CREATE (e)-[:PARENT]->(p)`,
 					fields{"id": id},
 					fields{"id": eventID(p)},
 				)
 				if err != nil {
+					panic(err)
 					return nil, err
 				}
 			}
@@ -184,15 +208,17 @@ func (s *Store) Load(events <-chan *inter.Event) error {
 
 		})
 		if err != nil {
-			log.Error("<<<", "err", err, "event", event.Hash())
+			log.Error("<<<", "err", err, "event", event.Hash()) // TODO: why the error is?
 			// return err
 		}
+		s.cache.EventsHeaders.Add(event.Hash(), &event.EventHeaderData, 1)
 
 		counter.Incr(1)
 		total++
 		last = event.Hash()
 		if time.Since(reported) >= statsReportLimit {
-			log.Info("<<<", "last", last,
+			log.Info("<<<",
+				"last", last,
 				"per second", counter.Rate()/60,
 				"total", total,
 				"elapsed", common.PrettyDuration(time.Since(start)))
@@ -200,7 +226,8 @@ func (s *Store) Load(events <-chan *inter.Event) error {
 		}
 	}
 
-	log.Info("Exported events", "last", last,
+	log.Info("Total imported events",
+		"last", last,
 		"per second", total*1000/time.Since(start).Milliseconds(),
 		"total", total,
 		"elapsed", common.PrettyDuration(time.Since(start)))
@@ -227,8 +254,8 @@ func (s *Store) FindAncestors(e hash.Event) (ancestors []hash.Event, err error) 
 
 		var ancestors []hash.Event
 		for res.Next() {
-			pid := res.Record().GetByIndex(0).(string)
-			ancestors = append(ancestors, eventHash(pid))
+			pid := eventHash(res.Record().GetByIndex(0).(string))
+			ancestors = append(ancestors, pid)
 		}
 		return ancestors, nil
 	})

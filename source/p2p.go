@@ -154,7 +154,7 @@ func newService(network string, output chan<- *inter.Event, store *neo4j.Store) 
 
 	svc.buffer = ordering.New(eventsBuffSize, ordering.Callback{
 		Process: func(e *inter.Event) error {
-			log.Info("New event", "id", e.Hash(), "parents", len(e.Parents), "by", e.Creator, "frame", inter.FmtFrame(e.Frame, e.IsRoot), "txs", e.Transactions.Len())
+			// log.Info("New event", "id", e.Hash(), "parents", len(e.Parents), "by", e.Creator, "frame", inter.FmtFrame(e.Frame, e.IsRoot), "txs", e.Transactions.Len())
 			svc.packsOnNewEvent(e, e.Epoch)
 			output <- e
 			return nil
@@ -165,7 +165,13 @@ func newService(network string, output chan<- *inter.Event, store *neo4j.Store) 
 			return svc.store.HasEventHeader(id)
 		},
 		Get: func(id hash.Event) *inter.EventHeaderData {
-			return svc.store.GetEvent(id)
+			event := svc.store.GetEvent(id)
+			if event != nil {
+				log.Info("from db", "event", id, "parents", event.Parents)
+			} else {
+				log.Info("from db", "event", id, "parents", "not found!")
+			}
+			return event
 		},
 		Check: func(e *inter.Event, parents []*inter.EventHeaderData) error {
 			return nil
@@ -173,7 +179,10 @@ func newService(network string, output chan<- *inter.Event, store *neo4j.Store) 
 	})
 
 	svc.fetcher = fetcher.New(fetcher.Callback{
-		PushEvent:      svc.buffer.PushEvent,
+		PushEvent: func(e *inter.Event, peer string) {
+			log.Info("+++", "event", e.Hash(), "parents", e.Parents)
+			svc.buffer.PushEvent(e, peer)
+		},
 		OnlyInterested: svc.onlyInterestedEvents,
 		DropPeer:       svc.removePeer,
 		FirstCheck:     func(*inter.Event) error { return nil },
