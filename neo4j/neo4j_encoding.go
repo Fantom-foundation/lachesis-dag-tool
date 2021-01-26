@@ -57,7 +57,7 @@ func marshal(x interface{}) fields {
 	case *inter.EventHeaderData:
 		return fields{
 			"id":      e.Hash().Hex(),
-			"creator": e.Creator,
+			"creator": int64(e.Creator),
 		}
 	default:
 		panic("unsupported type")
@@ -68,7 +68,7 @@ func marshal(x interface{}) fields {
 func unmarshal(ff fields, x interface{}) {
 	switch e := x.(type) {
 	case *inter.EventHeaderData:
-		e.Creator = ff["creator"].(idx.StakerID)
+		e.Creator = idx.StakerID(ff["creator"].(int64))
 		return
 	default:
 		panic("unsupported type")
