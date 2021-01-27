@@ -112,10 +112,7 @@ type service struct {
 	fetcher    *fetcher.Fetcher
 	buffer     *ordering.EventBuffer
 	store      *neo4j.Store
-
-	myEpoch             idx.Epoch
-	myEpochEventsCount  uint32
-	myEpochEventsShould uint32
+	status     *status
 
 	done chan struct{}
 	wg   sync.WaitGroup
@@ -150,7 +147,7 @@ func newService(network string, output chan<- *neo4j.EventData, from, to idx.Epo
 		peers: gossip.NewPeerSet(),
 		store: store,
 
-		myEpoch: from,
+		status: newStatus(from),
 
 		done: make(chan struct{}),
 	}
@@ -175,12 +172,7 @@ func newService(network string, output chan<- *neo4j.EventData, from, to idx.Epo
 			output <- &neo4j.EventData{Event: event, Ready: wg.Done}
 			wg.Wait()
 
-			svc.myEpochEventsCount++
-			log.Warn("eeeeeee", "epoch", svc.myEpoch, "count", svc.myEpochEventsCount, "should", svc.myEpochEventsShould)
-			if svc.myEpochEventsShould > 0 && svc.myEpochEventsShould <= svc.myEpochEventsCount {
-				svc.myEpoch++
-				svc.myEpochEventsShould = 0
-
+			if svc.status.IsEpochSealedBy(event.Hash()) {
 				peerEpoch := func(peer string) idx.Epoch {
 					p := svc.peers.Peer(peer)
 					if p == nil {
@@ -188,7 +180,7 @@ func newService(network string, output chan<- *neo4j.EventData, from, to idx.Epo
 					}
 					return p.Progress.Epoch
 				}
-				svc.downloader.OnNewEpoch(svc.myEpoch, peerEpoch)
+				svc.downloader.OnNewEpoch(svc.status.CurrEpoch(), peerEpoch)
 			}
 
 			return nil
@@ -313,7 +305,7 @@ func (s *service) handle(p *gossip.Peer) error {
 	}
 	p.Log().Info("Peer connected", "name", p.Name())
 
-	progress := gossip.PeerProgress{Epoch: s.myEpoch}
+	progress := gossip.PeerProgress{Epoch: s.status.CurrEpoch()}
 	if err := p.Handshake(s.net.NetworkID, progress, s.genesis); err != nil {
 		p.Log().Debug("Handshake failed", "err", err)
 		return err
@@ -382,7 +374,7 @@ func (s *service) handleMsg(p *gossip.Peer) error {
 			Epoch:            p.Progress.Epoch,
 			RequestPack:      p.RequestPack,
 			RequestPackInfos: p.RequestPackInfos,
-		}, s.myEpoch)
+		}, s.status.CurrEpoch())
 		peerDwnlr := s.downloader.Peer(p.Uid)
 		if peerDwnlr != nil && progress.LastPackInfo.Index > 0 {
 			_ = peerDwnlr.NotifyPackInfo(p.Progress.Epoch, progress.LastPackInfo.Index, progress.LastPackInfo.Heads, time.Now())
@@ -402,15 +394,6 @@ func (s *service) handleMsg(p *gossip.Peer) error {
 		}
 
 		log.Warn("GOT", "infos", fmt.Sprintf("%#v", infos))
-		if infos.Epoch == s.myEpoch {
-			var eventsTotal uint32
-			for _, pi := range infos.Infos {
-				eventsTotal += pi.NumOfEvents
-			}
-			if s.myEpochEventsShould < eventsTotal {
-				s.myEpochEventsShould = eventsTotal
-			}
-		}
 
 		// notify about number of packs this peer has
 		_ = peerDwnlr.NotifyPacksNum(infos.Epoch, infos.TotalNumOfPacks)
@@ -419,6 +402,7 @@ func (s *service) handleMsg(p *gossip.Peer) error {
 			if len(info.Heads) == 0 {
 				return errResp(gossip.ErrEmptyMessage, "%v", msg)
 			}
+			s.status.AddHeaders(infos.Epoch, info.Heads)
 			// Mark the hashes as present at the remote node
 			for _, id := range info.Heads {
 				p.MarkEvent(id)
@@ -516,7 +500,7 @@ func (s *service) onlyInterestedEvents(ids hash.Events) hash.Events {
 		return ids
 	}
 
-	epoch := s.myEpoch
+	epoch := s.status.CurrEpoch()
 
 	interested := make(hash.Events, 0, len(ids))
 	for _, id := range ids {
@@ -536,7 +520,7 @@ func (s *service) NodeInfo() *gossip.NodeInfo {
 	return &gossip.NodeInfo{
 		Network:     s.net.NetworkID,
 		Genesis:     s.genesis,
-		Epoch:       s.myEpoch,
+		Epoch:       s.status.CurrEpoch(),
 		NumOfBlocks: 0,
 	}
 }
