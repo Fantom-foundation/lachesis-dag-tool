@@ -119,7 +119,7 @@ type service struct {
 }
 
 func newService(network string, output chan<- *neo4j.EventData, from, to idx.Epoch, store *neo4j.Store) *service {
-	currEpoch := store.GetEpoch("current")
+	currEpoch := store.GetEpoch()
 	if from < currEpoch {
 		from = currEpoch
 	}
@@ -158,10 +158,6 @@ func newService(network string, output chan<- *neo4j.EventData, from, to idx.Epo
 
 	svc.buffer = ordering.New(eventsBuffSize, ordering.Callback{
 		Process: func(event *inter.Event) error {
-			if from < event.Epoch {
-				from = event.Epoch
-				store.SetEpoch("current", from)
-			}
 			if to > 0 && to < event.Epoch {
 				close(output)
 				return nil
@@ -173,6 +169,8 @@ func newService(network string, output chan<- *neo4j.EventData, from, to idx.Epo
 			wg.Wait()
 
 			if svc.status.IsEpochSealedBy(event.Hash()) {
+				epoch := svc.status.CurrEpoch()
+				store.SetEpoch(epoch)
 				peerEpoch := func(peer string) idx.Epoch {
 					p := svc.peers.Peer(peer)
 					if p == nil {
@@ -180,7 +178,7 @@ func newService(network string, output chan<- *neo4j.EventData, from, to idx.Epo
 					}
 					return p.Progress.Epoch
 				}
-				svc.downloader.OnNewEpoch(svc.status.CurrEpoch(), peerEpoch)
+				svc.downloader.OnNewEpoch(epoch, peerEpoch)
 			}
 
 			return nil
@@ -402,7 +400,7 @@ func (s *service) handleMsg(p *gossip.Peer) error {
 			if len(info.Heads) == 0 {
 				return errResp(gossip.ErrEmptyMessage, "%v", msg)
 			}
-			s.status.AddHeaders(infos.Epoch, info.Heads)
+			s.status.AddHeaders(infos.Epoch, info.Heads, s.store.HasEventHeader)
 			// Mark the hashes as present at the remote node
 			for _, id := range info.Heads {
 				p.MarkEvent(id)

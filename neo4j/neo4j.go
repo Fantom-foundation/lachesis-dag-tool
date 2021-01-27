@@ -46,20 +46,23 @@ func New(dbUrl string) (*Store, error) {
 	DDLs := []string{
 		"CREATE CONSTRAINT ON (e:Event) ASSERT e.id IS UNIQUE",
 		"CREATE CONSTRAINT ON (e:Epoch) ASSERT e.id IS UNIQUE",
+		"CREATE (e:Epoch {id:'current',num:1})",
 	}
-	_, err = session.WriteTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
-		defer ctx.Close()
+	for _, query := range DDLs {
+		_, err = session.WriteTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
+			defer ctx.Close()
 
-		for _, query := range DDLs {
 			err := exec(ctx, query)
 			if err != nil {
 				log.Warn("DDL", "err", err, "query", query)
+				return nil, err
 			}
+
+			return nil, ctx.Commit()
+		})
+		if err != nil {
+			ignoreFakeError(err)
 		}
-		return nil, ctx.Commit()
-	})
-	if err != nil {
-		ignoreFakeError(err)
 	}
 
 	s := &Store{
@@ -271,7 +274,8 @@ func (s *Store) FindAncestors(e hash.Event) []hash.Event {
 	return res.([]hash.Event)
 }
 
-func (s *Store) SetEpoch(key string, num idx.Epoch) {
+func (s *Store) SetEpoch(num idx.Epoch) {
+	const key = "current"
 	session, err := s.db.Session(neo4j.AccessModeWrite)
 	if err != nil {
 		panic(err)
@@ -281,10 +285,8 @@ func (s *Store) SetEpoch(key string, num idx.Epoch) {
 	_, err = session.WriteTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
 		defer ctx.Close()
 
-		err := exec(ctx, `CREATE (e:Epoch %s)`, fields{
-			"id":  key,
-			"num": num,
-		})
+		err := exec(ctx, `MATCH (e:Epoch %s) SET e.num = %d`,
+			fields{"id": key}, num)
 		if err != nil {
 			panic(err)
 		}
@@ -296,7 +298,9 @@ func (s *Store) SetEpoch(key string, num idx.Epoch) {
 	}
 }
 
-func (s *Store) GetEpoch(key string) idx.Epoch {
+func (s *Store) GetEpoch() idx.Epoch {
+	const key = "current"
+
 	session, err := s.db.Session(neo4j.AccessModeRead)
 	if err != nil {
 		panic(err)

@@ -27,7 +27,7 @@ func (s *status) CurrEpoch() idx.Epoch {
 	return s.epoch
 }
 
-func (s *status) AddHeaders(n idx.Epoch, ee hash.Events) {
+func (s *status) AddHeaders(n idx.Epoch, ee hash.Events, isReady func(hash.Event) bool) {
 	s.Lock()
 	defer s.Unlock()
 
@@ -37,7 +37,7 @@ func (s *status) AddHeaders(n idx.Epoch, ee hash.Events) {
 
 	for _, e := range ee {
 		if _, set := s.headers[e]; !set {
-			s.headers[e] = false
+			s.headers[e] = isReady(e)
 		}
 	}
 }
