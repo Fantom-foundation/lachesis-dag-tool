@@ -176,6 +176,7 @@ func newService(network string, output chan<- *neo4j.EventData, from, to idx.Epo
 			wg.Wait()
 
 			svc.myEpochEventsCount++
+			log.Warn("eeeeeee", "epoch", svc.myEpoch, "count", svc.myEpochEventsCount, "should", svc.myEpochEventsShould)
 			if svc.myEpochEventsShould > 0 && svc.myEpochEventsShould <= svc.myEpochEventsCount {
 				svc.myEpoch++
 				svc.myEpochEventsShould = 0
@@ -400,6 +401,7 @@ func (s *service) handleMsg(p *gossip.Peer) error {
 			return err
 		}
 
+		log.Warn("GOT", "infos", fmt.Sprintf("%#v", infos))
 		if infos.Epoch == s.myEpoch {
 			var eventsTotal uint32
 			for _, pi := range infos.Infos {
