@@ -7,6 +7,7 @@ require (
 	github.com/Fantom-foundation/lachesis-base v0.0.0-20201210130850-782ad52d6c4a
 	github.com/deckarep/golang-set v1.7.1
 	github.com/ethereum/go-ethereum v1.9.22
+	github.com/hashicorp/golang-lru v0.5.4
 	github.com/neo4j/neo4j-go-driver v1.8.3
 	github.com/paulbellamy/ratecounter v0.2.0
 	github.com/stretchr/testify v1.6.1

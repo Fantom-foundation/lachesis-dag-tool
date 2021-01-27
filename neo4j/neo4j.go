@@ -6,12 +6,11 @@ import (
 
 	"github.com/Fantom-foundation/go-lachesis/hash"
 	"github.com/Fantom-foundation/go-lachesis/inter"
-	"github.com/Fantom-foundation/lachesis-base/utils/wlru"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
+	lru "github.com/hashicorp/golang-lru"
 	"github.com/neo4j/neo4j-go-driver/neo4j"
 	"github.com/paulbellamy/ratecounter"
-	"github.com/syndtr/goleveldb/leveldb/opt"
 )
 
 const (
@@ -25,7 +24,7 @@ const (
 type Store struct {
 	db    neo4j.Driver
 	cache struct {
-		EventsHeaders *wlru.Cache
+		EventsHeaders *lru.Cache
 	}
 }
 
@@ -58,7 +57,7 @@ func New(dbUrl string) (*Store, error) {
 		db: db,
 	}
 
-	s.cache.EventsHeaders, err = wlru.New(5*opt.MiB, 500)
+	s.cache.EventsHeaders, err = lru.New(500)
 	if err != nil {
 		panic(err)
 	}
@@ -212,7 +211,7 @@ func (s *Store) Load(events <-chan *EventData) error {
 			log.Error("<<<", "err", err, "event", event.Hash()) // TODO: why the error is?
 			// return err
 		}
-		s.cache.EventsHeaders.Add(event.Hash(), &event.EventHeaderData, 1)
+		s.cache.EventsHeaders.Add(event.Hash(), &event.EventHeaderData)
 		if edata.Ready != nil {
 			edata.Ready()
 		}
