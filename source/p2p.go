@@ -48,7 +48,7 @@ func EventsFromP2p(ctx context.Context, network string, from, to idx.Epoch, stor
 	log.Info("Events of epoches", "from", from, "to", to, "network", network)
 	output := make(chan *neo4j.EventData, 1)
 
-	svc := newService(network, output, store)
+	svc := newService(network, output, from, to, store)
 	stack := newStack()
 	stack.RegisterProtocols(svc.Protocols())
 	stack.RegisterLifecycle(svc)
@@ -118,7 +118,12 @@ type service struct {
 	wg   sync.WaitGroup
 }
 
-func newService(network string, output chan<- *neo4j.EventData, store *neo4j.Store) *service {
+func newService(network string, output chan<- *neo4j.EventData, from, to idx.Epoch, store *neo4j.Store) *service {
+	currEpoch := store.GetEpoch("current")
+	if from < currEpoch {
+		from = currEpoch
+	}
+
 	var (
 		net     lachesis.Config
 		genesis common.Hash
@@ -145,25 +150,30 @@ func newService(network string, output chan<- *neo4j.EventData, store *neo4j.Sto
 		done: make(chan struct{}),
 	}
 
-	// TODO: read from db
-	svc.progress.Epoch = 1
+	svc.progress.Epoch = from
 
 	trustedNodes := []string{}
 	db := memorydb.New()
 	svc.serverPool = gossip.NewServerPool(db, svc.done, &svc.wg, trustedNodes)
 
 	svc.buffer = ordering.New(eventsBuffSize, ordering.Callback{
-		Process: func(e *inter.Event) error {
-			// log.Info("New event", "id", e.Hash(), "parents", len(e.Parents), "by", e.Creator, "frame", inter.FmtFrame(e.Frame, e.IsRoot), "txs", e.Transactions.Len())
-			svc.packsOnNewEvent(e, e.Epoch)
+		Process: func(event *inter.Event) error {
+			if from < event.Epoch {
+				from = event.Epoch
+				store.SetEpoch("current", from)
+			}
+			if to > 0 && to < event.Epoch {
+				close(output)
+				return nil
+			}
 
 			var wg sync.WaitGroup
 			wg.Add(1)
-			output <- &neo4j.EventData{Event: e, Ready: wg.Done}
+			output <- &neo4j.EventData{Event: event, Ready: wg.Done}
 			wg.Wait()
 			return nil
 		},
-		Drop: func(e *inter.Event, peer string, err error) {
+		Drop: func(event *inter.Event, peer string, err error) {
 		},
 		Exists: func(id hash.Event) bool {
 			return svc.store.HasEventHeader(id)
@@ -171,20 +181,20 @@ func newService(network string, output chan<- *neo4j.EventData, store *neo4j.Sto
 		Get: func(id hash.Event) *inter.EventHeaderData {
 			event := svc.store.GetEvent(id)
 			if event != nil {
-				log.Info("from db", "event", id, "parents", event.Parents)
+				log.Debug("read from db", "event", id, "parents", event.Parents)
 			} else {
-				log.Info("from db", "event", id, "parents", "not found!")
+				log.Debug("read from db", "event", id, "parents", "not found!")
 			}
 			return event
 		},
-		Check: func(e *inter.Event, parents []*inter.EventHeaderData) error {
+		Check: func(event *inter.Event, parents []*inter.EventHeaderData) error {
 			return nil
 		},
 	})
 
 	svc.fetcher = fetcher.New(fetcher.Callback{
 		PushEvent: func(e *inter.Event, peer string) {
-			log.Info("+++", "event", e.Hash(), "parents", e.Parents)
+			// log.Info("+++", "event", e.Hash(), "parents", e.Parents)
 			svc.buffer.PushEvent(e, peer)
 		},
 		OnlyInterested: svc.onlyInterestedEvents,
@@ -531,8 +541,8 @@ func (s *service) NodeInfo() *gossip.NodeInfo {
 	return &gossip.NodeInfo{
 		Network:     s.net.NetworkID,
 		Genesis:     s.genesis,
-		Epoch:       1,
-		NumOfBlocks: 0,
+		Epoch:       s.progress.Epoch,
+		NumOfBlocks: s.progress.NumOfBlocks,
 	}
 }
 

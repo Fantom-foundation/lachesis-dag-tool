@@ -21,6 +21,11 @@ func EventsFromDatadir(ctx context.Context, dataDir string, from, to idx.Epoch, 
 	log.Info("Events of epoches", "from", from, "to", to, "datadir", dataDir)
 	output := make(chan *neo4j.EventData, 10)
 
+	currEpoch := store.GetEpoch("current")
+	if from < currEpoch {
+		from = currEpoch
+	}
+
 	go func() {
 		defer close(output)
 
@@ -28,7 +33,11 @@ func EventsFromDatadir(ctx context.Context, dataDir string, from, to idx.Epoch, 
 		defer gdb.Close()
 
 		gdb.ForEachEvent(from, func(event *inter.Event) bool {
-			if to >= from && event.Epoch > to {
+			if from < event.Epoch {
+				from = event.Epoch
+				store.SetEpoch("current", from)
+			}
+			if to > 0 && to < event.Epoch {
 				return false
 			}
 
