@@ -29,7 +29,7 @@ var (
 	}
 
 	networkFlag = cli.StringFlag{
-		Name:  "net",
+		Name:  "network",
 		Usage: "Lachesis network name (main or test)",
 		Value: "main",
 	}
