@@ -111,8 +111,11 @@ type service struct {
 	downloader *packsdownloader.PacksDownloader
 	fetcher    *fetcher.Fetcher
 	buffer     *ordering.EventBuffer
-	progress   gossip.PeerProgress
 	store      *neo4j.Store
+
+	myEpoch             idx.Epoch
+	myEpochEventsCount  uint32
+	myEpochEventsShould uint32
 
 	done chan struct{}
 	wg   sync.WaitGroup
@@ -147,10 +150,10 @@ func newService(network string, output chan<- *neo4j.EventData, from, to idx.Epo
 		peers: gossip.NewPeerSet(),
 		store: store,
 
+		myEpoch: from,
+
 		done: make(chan struct{}),
 	}
-
-	svc.progress.Epoch = from
 
 	trustedNodes := []string{}
 	db := memorydb.New()
@@ -171,6 +174,22 @@ func newService(network string, output chan<- *neo4j.EventData, from, to idx.Epo
 			wg.Add(1)
 			output <- &neo4j.EventData{Event: event, Ready: wg.Done}
 			wg.Wait()
+
+			svc.myEpochEventsCount++
+			if svc.myEpochEventsShould > 0 && svc.myEpochEventsShould <= svc.myEpochEventsCount {
+				svc.myEpoch++
+				svc.myEpochEventsShould = 0
+
+				peerEpoch := func(peer string) idx.Epoch {
+					p := svc.peers.Peer(peer)
+					if p == nil {
+						return 0
+					}
+					return p.Progress.Epoch
+				}
+				svc.downloader.OnNewEpoch(svc.myEpoch, peerEpoch)
+			}
+
 			return nil
 		},
 		Drop: func(event *inter.Event, peer string, err error) {
@@ -293,7 +312,8 @@ func (s *service) handle(p *gossip.Peer) error {
 	}
 	p.Log().Info("Peer connected", "name", p.Name())
 
-	if err := p.Handshake(s.net.NetworkID, s.progress, s.genesis); err != nil {
+	progress := gossip.PeerProgress{Epoch: s.myEpoch}
+	if err := p.Handshake(s.net.NetworkID, progress, s.genesis); err != nil {
 		p.Log().Debug("Handshake failed", "err", err)
 		return err
 	}
@@ -361,7 +381,7 @@ func (s *service) handleMsg(p *gossip.Peer) error {
 			Epoch:            p.Progress.Epoch,
 			RequestPack:      p.RequestPack,
 			RequestPackInfos: p.RequestPackInfos,
-		}, s.progress.Epoch)
+		}, s.myEpoch)
 		peerDwnlr := s.downloader.Peer(p.Uid)
 		if peerDwnlr != nil && progress.LastPackInfo.Index > 0 {
 			_ = peerDwnlr.NotifyPackInfo(p.Progress.Epoch, progress.LastPackInfo.Index, progress.LastPackInfo.Heads, time.Now())
@@ -378,6 +398,16 @@ func (s *service) handleMsg(p *gossip.Peer) error {
 		}
 		if err := checkLenLimits(len(infos.Infos), infos); err != nil {
 			return err
+		}
+
+		if infos.Epoch == s.myEpoch {
+			var eventsTotal uint32
+			for _, pi := range infos.Infos {
+				eventsTotal += pi.NumOfEvents
+			}
+			if s.myEpochEventsShould < eventsTotal {
+				s.myEpochEventsShould = eventsTotal
+			}
 		}
 
 		// notify about number of packs this peer has
@@ -484,7 +514,7 @@ func (s *service) onlyInterestedEvents(ids hash.Events) hash.Events {
 		return ids
 	}
 
-	epoch := s.progress.Epoch
+	epoch := s.myEpoch
 
 	interested := make(hash.Events, 0, len(ids))
 	for _, id := range ids {
@@ -499,50 +529,13 @@ func (s *service) onlyInterestedEvents(ids hash.Events) hash.Events {
 	return interested
 }
 
-func (s *service) packsOnNewEvent(e *inter.Event, epoch idx.Epoch) {
-	/*
-		// due to default values, we don't need to explicitly set values at a start of an epoch
-		packIdx := s.store.GetPacksNumOrDefault(epoch)
-		packInfo := s.store.GetPackInfoOrDefault(s.engine.GetEpoch(), packIdx)
-
-		s.store.AddToPack(epoch, packIdx, e.Hash())
-
-		packInfo.Index = packIdx
-		packInfo.NumOfEvents++
-		packInfo.Size += uint32(e.Size())
-		if packInfo.NumOfEvents >= maxPackEventsNum || packInfo.Size >= maxPackSize {
-			// pin the s.store.GetHeads()
-			packInfo.Heads = s.store.GetHeads(epoch)
-			s.store.SetPacksNum(epoch, packIdx+1)
-
-			_ = s.feed.newPack.Send(packIdx + 1) // notify about new pack
-		}
-		s.store.SetPackInfo(epoch, packIdx, packInfo)
-	*/
-}
-
-func (s *service) packsOnNewEpoch(oldEpoch, newEpoch idx.Epoch) {
-	/*
-		// pin the last pack
-		packIdx := s.store.GetPacksNumOrDefault(oldEpoch)
-		packInfo := s.store.GetPackInfoOrDefault(s.engine.GetEpoch(), packIdx)
-
-		packInfo.Heads = s.store.GetHeads(oldEpoch)
-		s.store.SetPackInfo(oldEpoch, packIdx, packInfo)
-
-		s.store.SetPacksNum(oldEpoch, packIdx+1) // the last pack is always not pinned, so create not pinned one
-
-		_ = s.feed.newPack.Send(packIdx + 1)
-	*/
-}
-
 // NodeInfo retrieves some protocol metadata about the running host node.
 func (s *service) NodeInfo() *gossip.NodeInfo {
 	return &gossip.NodeInfo{
 		Network:     s.net.NetworkID,
 		Genesis:     s.genesis,
-		Epoch:       s.progress.Epoch,
-		NumOfBlocks: s.progress.NumOfBlocks,
+		Epoch:       s.myEpoch,
+		NumOfBlocks: 0,
 	}
 }
 
