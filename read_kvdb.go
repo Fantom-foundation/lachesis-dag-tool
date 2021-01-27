@@ -19,12 +19,12 @@ var (
 		Flags: []cli.Flag{
 			dataDirFlag,
 		},
-		Action: actReadKVdb,
+		Action: cmd(actReadKVdb),
 		Usage:  "Read DAG from KV db to compare performance with Neo4j db.",
 	}
 )
 
-func actReadKVdb(cli *cli.Context) (err error) {
+func actReadKVdb(ctx context.Context, cli *cli.Context) (err error) {
 	src := cli.String(dataDirFlag.Name)
 
 	event := hash.HexToEventHash(cli.Args().First())
@@ -33,20 +33,13 @@ func actReadKVdb(cli *cli.Context) (err error) {
 		return
 	}
 
-	ctx, stop := context.WithCancel(context.Background())
-	go func() {
-		defer stop()
-
-		start := time.Now()
-		log.Info("Data from KV", "database", src, "event", event)
-		var ancestors []hash.Event
-		ancestors, err = source.FindAncestors(src, event)
-		if err != nil {
-			return
-		}
-		log.Info("Data from KV", "ancestors", len(ancestors), "elapsed", common.PrettyDuration(time.Since(start)))
-	}()
-
-	waitForInterrupt(ctx)
+	start := time.Now()
+	log.Info("Data from KV", "database", src, "event", event)
+	var ancestors []hash.Event
+	ancestors, err = source.FindAncestors(src, event)
+	if err != nil {
+		return
+	}
+	log.Info("Data from KV", "ancestors", len(ancestors), "elapsed", common.PrettyDuration(time.Since(start)))
 	return
 }

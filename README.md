@@ -13,8 +13,9 @@ See `lachesis-dag-tool help`.
 
 ## Load DAG into Neo4j db
 
- - run Neo4j db;
- - `lachesis-dag-tool import --datadir=${LACHESIS_DATADIR}`;
+ - run Neo4j db first;
+ - from go-lachesis datadir: `lachesis-dag-tool import --datadir=${LACHESIS_DATADIR} [epoch_from [epoch_to]]`;
+ - from go-lachesis p2p net: `lachesis-dag-tool listen --network=main [epoch_from [epoch_to]]`;
 
 
 ## Read DAG from Neo4j db
