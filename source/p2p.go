@@ -391,7 +391,7 @@ func (s *service) handleMsg(p *gossip.Peer) error {
 			return err
 		}
 
-		log.Warn("GOT", "infos", fmt.Sprintf("%#v", infos))
+		log.Debug("packinfos", "data", fmt.Sprintf("%#v", infos), "peer", p.Uid)
 
 		// notify about number of packs this peer has
 		_ = peerDwnlr.NotifyPacksNum(infos.Epoch, infos.TotalNumOfPacks)
