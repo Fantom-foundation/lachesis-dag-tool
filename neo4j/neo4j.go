@@ -4,10 +4,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Fantom-foundation/go-lachesis/inter/idx"
-
 	"github.com/Fantom-foundation/go-lachesis/hash"
 	"github.com/Fantom-foundation/go-lachesis/inter"
+	"github.com/Fantom-foundation/go-lachesis/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
 	lru "github.com/hashicorp/golang-lru"
@@ -48,17 +47,19 @@ func New(dbUrl string) (*Store, error) {
 		"CREATE CONSTRAINT ON (e:Event) ASSERT e.id IS UNIQUE",
 		"CREATE CONSTRAINT ON (e:Epoch) ASSERT e.id IS UNIQUE",
 	}
-	for _, query := range DDLs {
-		_, err = session.WriteTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
+	_, err = session.WriteTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
+		defer ctx.Close()
+
+		for _, query := range DDLs {
 			err := exec(ctx, query)
 			if err != nil {
-				return nil, err
+				log.Warn("DDL", "err", err, "query", query)
 			}
-			return nil, nil
-		})
-		if err != nil {
-			log.Warn("DDL", "err", err, "query", query)
 		}
+		return nil, ctx.Commit()
+	})
+	if err != nil {
+		ignoreFakeError(err)
 	}
 
 	s := &Store{
@@ -92,22 +93,18 @@ func (s *Store) HasEventHeader(e hash.Event) bool {
 	id := eventID(e)
 
 	res, err := session.ReadTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
-		defer ctx.Close()
-
 		res, err := search(ctx, `MATCH (e:Event %s) RETURN e`, fields{
 			"id": id,
 		})
 		if err != nil {
-			return nil, err
+			panic(err)
 		}
 
-		for res.Next() {
-			return true, nil
-		}
-		return false, nil
+		has := res.Next()
+		return has, nil
 	})
 	if err != nil {
-		panic(err)
+		ignoreFakeError(err)
 	}
 
 	return res.(bool)
@@ -128,13 +125,11 @@ func (s *Store) GetEvent(e hash.Event) *inter.EventHeaderData {
 	id := eventID(e)
 
 	res, err := session.ReadTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
-		defer ctx.Close()
-
 		res, err := search(ctx, `MATCH (e:Event %s) RETURN e.id as id, e.creator as creator`, fields{
 			"id": id,
 		})
 		if err != nil {
-			return nil, err
+			panic(err)
 		}
 
 		for res.Next() {
@@ -146,7 +141,7 @@ func (s *Store) GetEvent(e hash.Event) *inter.EventHeaderData {
 		return nil, nil
 	})
 	if err != nil {
-		panic(err)
+		ignoreFakeError(err)
 	}
 	if res == nil {
 		return nil
@@ -154,13 +149,11 @@ func (s *Store) GetEvent(e hash.Event) *inter.EventHeaderData {
 	event := res.(*inter.EventHeaderData)
 
 	res, err = session.ReadTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
-		defer ctx.Close()
-
 		res, err := search(ctx, `MATCH (e:Event %s)-[:PARENT]->(p) RETURN p.id`,
 			fields{"id": id},
 		)
 		if err != nil {
-			return nil, err
+			panic(err)
 		}
 		var parents hash.Events
 		for res.Next() {
@@ -170,7 +163,7 @@ func (s *Store) GetEvent(e hash.Event) *inter.EventHeaderData {
 		return parents, nil
 	})
 	if err != nil {
-		panic(err)
+		ignoreFakeError(err)
 	}
 	event.Parents = res.(hash.Events)
 
@@ -178,10 +171,10 @@ func (s *Store) GetEvent(e hash.Event) *inter.EventHeaderData {
 }
 
 // Load data from events chain.
-func (s *Store) Load(events <-chan *EventData) error {
+func (s *Store) Load(events <-chan *EventData) {
 	session, err := s.db.Session(neo4j.AccessModeWrite)
 	if err != nil {
-		return err
+		panic(err)
 	}
 	defer session.Close()
 	// DML
@@ -203,7 +196,6 @@ func (s *Store) Load(events <-chan *EventData) error {
 			err = exec(ctx, "CREATE (e:Event %s)", data)
 			if err != nil {
 				panic(err)
-				return nil, err
 			}
 
 			for _, p := range event.Parents {
@@ -213,17 +205,15 @@ func (s *Store) Load(events <-chan *EventData) error {
 				)
 				if err != nil {
 					panic(err)
-					return nil, err
 				}
 			}
 
 			return nil, ctx.Commit()
-
 		})
 		if err != nil {
-			log.Warn("<<<", "err", err, "event", event.Hash()) // TODO: why the error is?
-			// return err
+			ignoreFakeError(err)
 		}
+
 		s.cache.EventsHeaders.Add(event.Hash(), &event.EventHeaderData)
 		if edata.Ready != nil {
 			edata.Ready()
@@ -235,7 +225,7 @@ func (s *Store) Load(events <-chan *EventData) error {
 		if time.Since(reported) >= statsReportLimit {
 			log.Info("<<<",
 				"last", last,
-				"per second", counter.Rate()/60,
+				"rate", counter.Rate()/60,
 				"total", total,
 				"elapsed", common.PrettyDuration(time.Since(start)))
 			reported = time.Now()
@@ -244,30 +234,27 @@ func (s *Store) Load(events <-chan *EventData) error {
 
 	log.Info("Total imported events",
 		"last", last,
-		"per second", total*1000/time.Since(start).Milliseconds(),
+		"rate", total*1000/time.Since(start).Milliseconds(),
 		"total", total,
 		"elapsed", common.PrettyDuration(time.Since(start)))
-	return nil
 }
 
 // FindAncestors of event.
-func (s *Store) FindAncestors(e hash.Event) (ancestors []hash.Event, err error) {
+func (s *Store) FindAncestors(e hash.Event) []hash.Event {
 	session, err := s.db.Session(neo4j.AccessModeRead)
 	if err != nil {
-		return
+		panic(err)
 	}
 	defer session.Close()
 
 	id := eventID(e)
 
 	res, err := session.ReadTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
-		defer ctx.Close()
-
 		res, err := search(ctx, "MATCH (p:Event %s)-[:PARENT*]->(s:Event) RETURN DISTINCT s.id", fields{
 			"id": id,
 		})
 		if err != nil {
-			return nil, err
+			panic(err)
 		}
 
 		var ancestors []hash.Event
@@ -278,11 +265,10 @@ func (s *Store) FindAncestors(e hash.Event) (ancestors []hash.Event, err error) 
 		return ancestors, nil
 	})
 	if err != nil {
-		return
+		ignoreFakeError(err)
 	}
 
-	ancestors = res.([]hash.Event)
-	return
+	return res.([]hash.Event)
 }
 
 func (s *Store) SetEpoch(key string, num idx.Epoch) {
@@ -300,13 +286,13 @@ func (s *Store) SetEpoch(key string, num idx.Epoch) {
 			"num": num,
 		})
 		if err != nil {
-			return nil, err
+			panic(err)
 		}
 
 		return nil, ctx.Commit()
 	})
 	if err != nil {
-		panic(err)
+		ignoreFakeError(err)
 	}
 }
 
@@ -322,7 +308,7 @@ func (s *Store) GetEpoch(key string) idx.Epoch {
 			"id": key,
 		})
 		if err != nil {
-			return nil, err
+			panic(err)
 		}
 
 		for res.Next() {
@@ -332,7 +318,7 @@ func (s *Store) GetEpoch(key string) idx.Epoch {
 		return nil, nil
 	})
 	if err != nil {
-		panic(err)
+		ignoreFakeError(err)
 	}
 	if res == nil {
 		return idx.Epoch(1)
@@ -360,4 +346,8 @@ func search(ctx neo4j.Transaction, cypher string, a ...interface{}) (neo4j.Resul
 	}
 
 	return res, nil
+}
+
+func ignoreFakeError(err error) {
+	log.Trace("neo4j non critical error", "err", err)
 }

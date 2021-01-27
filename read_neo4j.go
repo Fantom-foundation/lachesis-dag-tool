@@ -24,7 +24,7 @@ var (
 	}
 )
 
-func actReadNeo4j(ctx context.Context, cli *cli.Context) (err error) {
+func actReadNeo4j(ctx context.Context, cli *cli.Context) error {
 	src := cli.String(neo4jUrlFlag.Name)
 	if src == "" {
 		src = cli.GlobalString(neo4jUrlFlag.Name)
@@ -32,24 +32,20 @@ func actReadNeo4j(ctx context.Context, cli *cli.Context) (err error) {
 
 	event := hash.HexToEventHash(cli.Args().First())
 	if event.IsZero() {
-		err = fmt.Errorf("arg0 (event hash) required")
-		return
+		err := fmt.Errorf("arg0 (event hash) required")
+		return err
 	}
 
 	store, err := neo4j.New(src)
 	if err != nil {
-		return
+		return err
 	}
 	defer store.Close()
 
 	start := time.Now()
 	log.Info("Data from Neo4j", "database", src, "event", event)
 	var ancestors []hash.Event
-	ancestors, err = store.FindAncestors(event)
-	if err != nil {
-		return
-	}
+	ancestors = store.FindAncestors(event)
 	log.Info("Data from Neo4j", "ancestors", len(ancestors), "elapsed", common.PrettyDuration(time.Since(start)))
-
-	return
+	return nil
 }

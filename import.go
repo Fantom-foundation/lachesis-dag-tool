@@ -60,27 +60,27 @@ func actImport(ctx context.Context, cli *cli.Context) (err error) {
 	defer store.Close()
 
 	events := source.EventsFromDatadir(ctx, src, from, to, store)
-	err = store.Load(events)
-	return
+	store.Load(events)
+	return nil
 }
 
-func actListen(ctx context.Context, cli *cli.Context) (err error) {
+func actListen(ctx context.Context, cli *cli.Context) error {
 	dst := cli.GlobalString(neo4jUrlFlag.Name)
 	network := cli.String(networkFlag.Name)
 	from, to, err := parseEpochArgs(cli)
 	if err != nil {
-		return
+		return err
 	}
 
 	store, err := neo4j.New(dst)
 	if err != nil {
-		return
+		return err
 	}
 	defer store.Close()
 
 	events := source.EventsFromP2p(ctx, network, from, to, store)
-	err = store.Load(events)
-	return
+	store.Load(events)
+	return nil
 }
 
 func parseEpochArgs(cli *cli.Context) (from, to idx.Epoch, err error) {
