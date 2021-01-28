@@ -24,15 +24,15 @@ func (t *task) Done() {
 }
 
 type store struct {
-	*neo4j.Store
+	*neo4j.Db
 	out    chan neo4j.ToStore
 	synced bool
 	wg     sync.WaitGroup
 }
 
-func newStore(db *neo4j.Store, synced bool) *store {
+func newStore(db *neo4j.Db, synced bool) *store {
 	s := &store{
-		Store:  db,
+		Db:     db,
 		out:    make(chan neo4j.ToStore, 10),
 		synced: synced,
 	}
@@ -40,7 +40,7 @@ func newStore(db *neo4j.Store, synced bool) *store {
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
-		s.Store.Load(s.out)
+		s.Db.Load(s.out)
 	}()
 
 	return s

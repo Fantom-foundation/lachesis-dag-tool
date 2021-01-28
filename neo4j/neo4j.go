@@ -22,14 +22,14 @@ const (
 	statsReportLimit = 8 * time.Second
 )
 
-type Store struct {
-	db    neo4j.Driver
+type Db struct {
+	drv   neo4j.Driver
 	cache struct {
 		EventsHeaders *lru.Cache
 	}
 }
 
-func New(dbUrl string) (*Store, error) {
+func New(dbUrl string) (*Db, error) {
 	db, err := neo4j.NewDriver(dbUrl, neo4j.NoAuth(), func(c *neo4j.Config) {
 		c.Encrypted = false
 	})
@@ -65,8 +65,8 @@ func New(dbUrl string) (*Store, error) {
 		}
 	}
 
-	s := &Store{
-		db: db,
+	s := &Db{
+		drv: db,
 	}
 
 	s.cache.EventsHeaders, err = lru.New(500)
@@ -77,17 +77,17 @@ func New(dbUrl string) (*Store, error) {
 	return s, nil
 }
 
-func (s *Store) Close() error {
-	return s.db.Close()
+func (s *Db) Close() error {
+	return s.drv.Close()
 }
 
-func (s *Store) HasEvent(e hash.Event) bool {
+func (s *Db) HasEvent(e hash.Event) bool {
 	// Get event from LRU cache first.
 	if _, ok := s.cache.EventsHeaders.Get(e); ok {
 		return true
 	}
 
-	session, err := s.db.Session(neo4j.AccessModeRead)
+	session, err := s.drv.Session(neo4j.AccessModeRead)
 	if err != nil {
 		panic(err)
 	}
@@ -113,13 +113,13 @@ func (s *Store) HasEvent(e hash.Event) bool {
 	return res.(bool)
 }
 
-func (s *Store) GetEvent(e hash.Event) *inter.EventHeaderData {
+func (s *Db) GetEvent(e hash.Event) *inter.EventHeaderData {
 	// Get event from LRU cache first.
 	if ev, ok := s.cache.EventsHeaders.Get(e); ok {
 		return ev.(*inter.EventHeaderData)
 	}
 
-	session, err := s.db.Session(neo4j.AccessModeRead)
+	session, err := s.drv.Session(neo4j.AccessModeRead)
 	if err != nil {
 		panic(err)
 	}
@@ -174,8 +174,8 @@ func (s *Store) GetEvent(e hash.Event) *inter.EventHeaderData {
 }
 
 // Load data from events chain.
-func (s *Store) Load(events <-chan ToStore) {
-	session, err := s.db.Session(neo4j.AccessModeWrite)
+func (s *Db) Load(events <-chan ToStore) {
+	session, err := s.drv.Session(neo4j.AccessModeWrite)
 	if err != nil {
 		panic(err)
 	}
@@ -241,8 +241,8 @@ func (s *Store) Load(events <-chan ToStore) {
 }
 
 // FindAncestors of event.
-func (s *Store) FindAncestors(e hash.Event) []hash.Event {
-	session, err := s.db.Session(neo4j.AccessModeRead)
+func (s *Db) FindAncestors(e hash.Event) []hash.Event {
+	session, err := s.drv.Session(neo4j.AccessModeRead)
 	if err != nil {
 		panic(err)
 	}
@@ -272,9 +272,9 @@ func (s *Store) FindAncestors(e hash.Event) []hash.Event {
 	return res.([]hash.Event)
 }
 
-func (s *Store) SetEpoch(num idx.Epoch) {
+func (s *Db) SetEpoch(num idx.Epoch) {
 	const key = "current"
-	session, err := s.db.Session(neo4j.AccessModeWrite)
+	session, err := s.drv.Session(neo4j.AccessModeWrite)
 	if err != nil {
 		panic(err)
 	}
@@ -296,10 +296,10 @@ func (s *Store) SetEpoch(num idx.Epoch) {
 	}
 }
 
-func (s *Store) GetEpoch() idx.Epoch {
+func (s *Db) GetEpoch() idx.Epoch {
 	const key = "current"
 
-	session, err := s.db.Session(neo4j.AccessModeRead)
+	session, err := s.drv.Session(neo4j.AccessModeRead)
 	if err != nil {
 		panic(err)
 	}
