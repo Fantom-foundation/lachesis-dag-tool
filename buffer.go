@@ -25,16 +25,16 @@ func (t *task) Done() {
 
 type store struct {
 	*neo4j.Store
-	in  chan *inter.EventHeaderData
-	out chan neo4j.ToStore
-	wg  sync.WaitGroup
+	out    chan neo4j.ToStore
+	synced bool
+	wg     sync.WaitGroup
 }
 
 func newStore(db *neo4j.Store, synced bool) *store {
 	s := &store{
-		Store: db,
-		in:    make(chan *inter.EventHeaderData, 10),
-		out:   make(chan neo4j.ToStore, 10),
+		Store:  db,
+		out:    make(chan neo4j.ToStore, 10),
+		synced: synced,
 	}
 
 	s.wg.Add(1)
@@ -43,46 +43,11 @@ func newStore(db *neo4j.Store, synced bool) *store {
 		s.Store.Load(s.out)
 	}()
 
-	if synced {
-		go s.syncLoop()
-	} else {
-		go s.asyncLoop()
-	}
-
 	return s
 }
 
-func (s *store) asyncLoop() {
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
-		defer close(s.out)
-
-		for e := range s.in {
-			t := &task{event: e}
-			s.out <- neo4j.ToStore(t)
-		}
-	}()
-}
-
-func (s *store) syncLoop() {
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
-		defer close(s.out)
-
-		var wg sync.WaitGroup
-		for e := range s.in {
-			wg.Add(1)
-			t := &task{event: e, onDone: wg.Done}
-			s.out <- neo4j.ToStore(t)
-			wg.Wait()
-		}
-	}()
-}
-
 func (s *store) Close() {
-	close(s.in)
+	close(s.out)
 }
 
 func (s *store) WaitForAll() {
@@ -90,5 +55,17 @@ func (s *store) WaitForAll() {
 }
 
 func (s *store) Save(event *inter.EventHeaderData) {
-	s.in <- event
+	var wg sync.WaitGroup
+
+	t := &task{event: event}
+	if s.synced {
+		wg.Add(1)
+		t.onDone = wg.Done
+	}
+
+	s.out <- neo4j.ToStore(t)
+
+	if s.synced {
+		wg.Wait()
+	}
 }

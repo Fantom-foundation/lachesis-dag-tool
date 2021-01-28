@@ -192,7 +192,6 @@ func newService(network string, from, to idx.Epoch, store Store) *service {
 
 	s.fetcher = fetcher.New(fetcher.Callback{
 		PushEvent: func(e *inter.Event, peer string) {
-			// log.Info("+++", "event", e.Hash(), "parents", e.Parents)
 			s.buffer.PushEvent(e, peer)
 		},
 		OnlyInterested: s.onlyInterestedEvents,
@@ -435,6 +434,7 @@ func (s *service) handleMsg(p *gossip.Peer) error {
 		// Mark the hashes as present at the remote node
 		for _, e := range events {
 			p.MarkEvent(e.Hash())
+			// log.Debug("+++", "event", e.Hash(), "parents", e.Parents)
 		}
 
 		_ = s.fetcher.Enqueue(p.Uid, events, time.Now(), p.RequestEvents)
