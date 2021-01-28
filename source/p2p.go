@@ -158,7 +158,6 @@ func newService(network string, from, to idx.Epoch, store Store) *service {
 
 			if s.status.IsEpochSealedBy(event.Hash()) {
 				epoch := s.status.CurrEpoch()
-				store.SetEpoch(epoch)
 				peerEpoch := func(peer string) idx.Epoch {
 					p := s.peers.Peer(peer)
 					if p == nil {

@@ -28,10 +28,6 @@ func EventsFromDatadir(ctx context.Context, dataDir string, from, to idx.Epoch, 
 	defer gdb.Close()
 
 	gdb.ForEachEvent(from, func(event *inter.Event) bool {
-		if from < event.Epoch {
-			from = event.Epoch
-			store.SetEpoch(from)
-		}
 		if to > 0 && to < event.Epoch {
 			return false
 		}

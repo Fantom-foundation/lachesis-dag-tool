@@ -65,30 +65,29 @@ func (s *CachedDb) Load(events <-chan ToStore) {
 	go s.db.Load(toDisk)
 
 	for task := range events {
+		var updateEpoch func()
 		event := task.Payload()
 		e := event.Hash()
+		epoch := e.Epoch()
 
 		s.Lock()
-		ee, exists := s.inmem[e.Epoch()]
+		ee, exists := s.inmem[epoch]
 		if !exists {
 			ee = make(map[hash.Event]*inter.EventHeaderData, 5000)
-			s.inmem[e.Epoch()] = ee
-			delete(s.inmem, e.Epoch()-2)
+			s.inmem[epoch] = ee
+			s.currEpoch = epoch
+			updateEpoch = func() {
+				s.db.setEpoch(epoch)
+			}
+			delete(s.inmem, epoch-2)
 		}
 		ee[e] = event
 		s.Unlock()
 		task.Done()
 
-		toDisk <- &asyncTask{event}
+		later := &asyncTask{event: event, onDone: updateEpoch}
+		toDisk <- later
 	}
-}
-
-func (s *CachedDb) SetEpoch(num idx.Epoch) {
-	s.Lock()
-	defer s.Unlock()
-
-	s.currEpoch = num
-	s.db.SetEpoch(num) // TODO: set later, when flush events to disk
 }
 
 func (s *CachedDb) GetEpoch() idx.Epoch {
@@ -99,7 +98,8 @@ func (s *CachedDb) GetEpoch() idx.Epoch {
 }
 
 type asyncTask struct {
-	event *inter.EventHeaderData
+	event  *inter.EventHeaderData
+	onDone func()
 }
 
 func (t *asyncTask) Payload() *inter.EventHeaderData {
@@ -107,4 +107,7 @@ func (t *asyncTask) Payload() *inter.EventHeaderData {
 }
 
 func (t *asyncTask) Done() {
+	if t.onDone != nil {
+		t.onDone()
+	}
 }

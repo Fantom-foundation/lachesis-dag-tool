@@ -272,7 +272,7 @@ func (s *Db) FindAncestors(e hash.Event) []hash.Event {
 	return res.([]hash.Event)
 }
 
-func (s *Db) SetEpoch(num idx.Epoch) {
+func (s *Db) setEpoch(num idx.Epoch) {
 	const key = "current"
 	session, err := s.drv.Session(neo4j.AccessModeWrite)
 	if err != nil {

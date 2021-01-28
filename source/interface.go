@@ -7,7 +7,6 @@ import (
 )
 
 type Store interface {
-	SetEpoch(idx.Epoch)
 	GetEpoch() idx.Epoch
 	HasEvent(e hash.Event) bool
 	GetEvent(e hash.Event) *inter.EventHeaderData
