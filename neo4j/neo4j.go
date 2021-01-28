@@ -173,6 +173,61 @@ func (s *Db) GetEvent(e hash.Event) *inter.EventHeaderData {
 	return event
 }
 
+func (s *Db) getEvents(epoch idx.Epoch) <-chan *inter.EventHeaderData {
+	events := make(chan *inter.EventHeaderData)
+	go func() {
+		defer close(events)
+
+		session, err := s.drv.Session(neo4j.AccessModeRead)
+		if err != nil {
+			panic(err)
+		}
+		defer session.Close()
+
+		_, err = session.ReadTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
+			res, err := search(ctx, `MATCH (e:Event) RETURN e.id as id, e.creator as creator`)
+			if err != nil {
+				panic(err)
+			}
+
+			for res.Next() {
+				ff := readFields(res.Record())
+				id := ff["id"].(string)
+				if eventHash(id).Epoch() != epoch {
+					continue
+				}
+				header := new(inter.EventHeaderData)
+				unmarshal(ff, header)
+
+				_, err = session.ReadTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
+					res, err := search(ctx, `MATCH (e:Event %s)-[:PARENT]->(p) RETURN p.id`,
+						fields{"id": id},
+					)
+					if err != nil {
+						panic(err)
+					}
+					for res.Next() {
+						p := eventHash(res.Record().GetByIndex(0).(string))
+						header.Parents = append(header.Parents, p)
+					}
+					return nil, nil
+				})
+				if err != nil {
+					ignoreFakeError(err)
+				}
+
+				events <- header
+			}
+			return nil, nil
+		})
+		if err != nil {
+			ignoreFakeError(err)
+		}
+	}()
+
+	return events
+}
+
 // Load data from events chain.
 func (s *Db) Load(events <-chan ToStore) {
 	session, err := s.drv.Session(neo4j.AccessModeWrite)

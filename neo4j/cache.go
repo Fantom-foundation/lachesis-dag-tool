@@ -23,6 +23,12 @@ func NewCachedDb(db *Db) *CachedDb {
 		inmem:     make(map[idx.Epoch]map[hash.Event]*inter.EventHeaderData, 3),
 	}
 
+	ee := make(map[hash.Event]*inter.EventHeaderData, 5000)
+	for e := range db.getEvents(s.currEpoch) {
+		ee[e.Hash()] = e
+	}
+	s.inmem[s.currEpoch] = ee
+
 	return s
 }
 
