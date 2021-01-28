@@ -74,10 +74,11 @@ func actListen(ctx context.Context, cli *cli.Context) error {
 		return err
 	}
 
-	db, err := neo4j.New(dst)
+	disk, err := neo4j.New(dst)
 	if err != nil {
 		return err
 	}
+	db := neo4j.NewCachedDb(disk)
 	defer db.Close()
 
 	store := newStore(db, true)

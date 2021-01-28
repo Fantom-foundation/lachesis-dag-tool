@@ -3,7 +3,9 @@ package main
 import (
 	"sync"
 
+	"github.com/Fantom-foundation/go-lachesis/hash"
 	"github.com/Fantom-foundation/go-lachesis/inter"
+	"github.com/Fantom-foundation/go-lachesis/inter/idx"
 
 	"github.com/Fantom-foundation/lachesis-dag-tool/neo4j"
 )
@@ -23,24 +25,31 @@ func (t *task) Done() {
 	}
 }
 
+type Neo4jDb interface {
+	GetEpoch() idx.Epoch
+	HasEvent(e hash.Event) bool
+	GetEvent(e hash.Event) *inter.EventHeaderData
+	Load(<-chan neo4j.ToStore)
+}
+
 type store struct {
-	*neo4j.Db
+	Neo4jDb
 	out    chan neo4j.ToStore
 	synced bool
 	wg     sync.WaitGroup
 }
 
-func newStore(db *neo4j.Db, synced bool) *store {
+func newStore(db Neo4jDb, synced bool) *store {
 	s := &store{
-		Db:     db,
-		out:    make(chan neo4j.ToStore, 10),
-		synced: synced,
+		Neo4jDb: db,
+		out:     make(chan neo4j.ToStore, 10),
+		synced:  synced,
 	}
 
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
-		s.Db.Load(s.out)
+		s.Neo4jDb.Load(s.out)
 	}()
 
 	return s
