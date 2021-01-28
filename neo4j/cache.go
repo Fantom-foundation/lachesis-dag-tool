@@ -2,10 +2,12 @@ package neo4j
 
 import (
 	"sync"
+	"time"
 
 	"github.com/Fantom-foundation/go-lachesis/hash"
 	"github.com/Fantom-foundation/go-lachesis/inter"
 	"github.com/Fantom-foundation/go-lachesis/inter/idx"
+	"github.com/ethereum/go-ethereum/log"
 )
 
 type CachedDb struct {
@@ -13,6 +15,7 @@ type CachedDb struct {
 	currEpoch idx.Epoch
 	inmem     map[idx.Epoch]map[hash.Event]*inter.EventHeaderData
 
+	busy sync.WaitGroup
 	sync.RWMutex
 }
 
@@ -23,11 +26,14 @@ func NewCachedDb(db *Db) *CachedDb {
 		inmem:     make(map[idx.Epoch]map[hash.Event]*inter.EventHeaderData, 3),
 	}
 
+	log.Info("Init neo4j cache", "begin", time.Now(), "epoch", s.currEpoch)
 	ee := make(map[hash.Event]*inter.EventHeaderData, 5000)
 	for e := range db.getEvents(s.currEpoch) {
-		ee[e.Hash()] = e
+		ee[e.OriginHash] = e.EventHeaderData
+		log.Debug("already exists", "event", e.OriginHash, "parents", e.Parents)
 	}
 	s.inmem[s.currEpoch] = ee
+	log.Info("Init neo4j cache", "finish", time.Now(), "events", len(ee))
 
 	return s
 }
@@ -35,6 +41,8 @@ func NewCachedDb(db *Db) *CachedDb {
 func (s *CachedDb) Close() error {
 	s.Lock()
 	defer s.Unlock()
+
+	s.busy.Wait()
 
 	return s.db.Close()
 }
@@ -60,11 +68,15 @@ func (s *CachedDb) GetEvent(e hash.Event) *inter.EventHeaderData {
 		return nil
 	}
 	event, _ := ee[e]
+
 	return event
 }
 
 // Load data from events chain.
 func (s *CachedDb) Load(events <-chan ToStore) {
+	s.busy.Add(1)
+	defer s.busy.Done()
+
 	toDisk := make(chan ToStore, 100)
 	defer close(toDisk)
 

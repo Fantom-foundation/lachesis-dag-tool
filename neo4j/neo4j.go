@@ -2,6 +2,7 @@ package neo4j
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/Fantom-foundation/go-lachesis/hash"
@@ -24,6 +25,7 @@ const (
 
 type Db struct {
 	drv   neo4j.Driver
+	busy  sync.WaitGroup
 	cache struct {
 		EventsHeaders *lru.Cache
 	}
@@ -36,6 +38,13 @@ func New(dbUrl string) (*Db, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	s := &Db{
+		drv: db,
+	}
+
+	s.busy.Add(1)
+	defer s.busy.Done()
 
 	session, err := db.Session(neo4j.AccessModeWrite)
 	if err != nil {
@@ -65,10 +74,6 @@ func New(dbUrl string) (*Db, error) {
 		}
 	}
 
-	s := &Db{
-		drv: db,
-	}
-
 	s.cache.EventsHeaders, err = lru.New(500)
 	if err != nil {
 		panic(err)
@@ -78,6 +83,7 @@ func New(dbUrl string) (*Db, error) {
 }
 
 func (s *Db) Close() error {
+	s.busy.Wait()
 	return s.drv.Close()
 }
 
@@ -87,6 +93,9 @@ func (s *Db) HasEvent(e hash.Event) bool {
 		return true
 	}
 
+	s.busy.Add(1)
+	defer s.busy.Done()
+
 	session, err := s.drv.Session(neo4j.AccessModeRead)
 	if err != nil {
 		panic(err)
@@ -96,14 +105,14 @@ func (s *Db) HasEvent(e hash.Event) bool {
 	id := eventID(e)
 
 	res, err := session.ReadTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
-		res, err := search(ctx, `MATCH (e:Event %s) RETURN e`, fields{
+		cursor, err := search(ctx, `MATCH (e:Event %s) RETURN e`, fields{
 			"id": id,
 		})
 		if err != nil {
 			panic(err)
 		}
 
-		has := res.Next()
+		has := cursor.Next()
 		return has, nil
 	})
 	if err != nil {
@@ -113,11 +122,16 @@ func (s *Db) HasEvent(e hash.Event) bool {
 	return res.(bool)
 }
 
+// GetEvent returns event header.
+// Note: returned event has incorrect .Hash() because not all the fields are stored.
 func (s *Db) GetEvent(e hash.Event) *inter.EventHeaderData {
 	// Get event from LRU cache first.
 	if ev, ok := s.cache.EventsHeaders.Get(e); ok {
 		return ev.(*inter.EventHeaderData)
 	}
+
+	s.busy.Add(1)
+	defer s.busy.Done()
 
 	session, err := s.drv.Session(neo4j.AccessModeRead)
 	if err != nil {
@@ -128,15 +142,15 @@ func (s *Db) GetEvent(e hash.Event) *inter.EventHeaderData {
 	id := eventID(e)
 
 	res, err := session.ReadTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
-		res, err := search(ctx, `MATCH (e:Event %s) RETURN e.id as id, e.creator as creator`, fields{
+		cursor, err := search(ctx, `MATCH (e:Event %s) RETURN e.id as id, e.creator as creator`, fields{
 			"id": id,
 		})
 		if err != nil {
 			panic(err)
 		}
 
-		for res.Next() {
-			ff := readFields(res.Record())
+		for cursor.Next() {
+			ff := readFields(cursor.Record())
 			header := new(inter.EventHeaderData)
 			unmarshal(ff, header)
 			return header, nil
@@ -149,74 +163,55 @@ func (s *Db) GetEvent(e hash.Event) *inter.EventHeaderData {
 	if res == nil {
 		return nil
 	}
-	event := res.(*inter.EventHeaderData)
+	header := res.(*inter.EventHeaderData)
 
-	res, err = session.ReadTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
-		res, err := search(ctx, `MATCH (e:Event %s)-[:PARENT]->(p) RETURN p.id`,
-			fields{"id": id},
-		)
-		if err != nil {
-			panic(err)
-		}
-		var parents hash.Events
-		for res.Next() {
-			p := eventHash(res.Record().GetByIndex(0).(string))
-			parents = append(parents, p)
-		}
-		return parents, nil
-	})
-	if err != nil {
-		ignoreFakeError(err)
-	}
-	event.Parents = res.(hash.Events)
+	header.Parents = s.getParents(session, e)
 
-	return event
+	return header
 }
 
-func (s *Db) getEvents(epoch idx.Epoch) <-chan *inter.EventHeaderData {
-	events := make(chan *inter.EventHeaderData)
+func (s *Db) getEvents(epoch idx.Epoch) <-chan *storedEvent {
+	events := make(chan *storedEvent)
 	go func() {
 		defer close(events)
 
-		session, err := s.drv.Session(neo4j.AccessModeRead)
+		s.busy.Add(1)
+		defer s.busy.Done()
+
+		session0, err := s.drv.Session(neo4j.AccessModeRead)
 		if err != nil {
 			panic(err)
 		}
-		defer session.Close()
+		defer session0.Close()
 
-		_, err = session.ReadTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
-			res, err := search(ctx, `MATCH (e:Event) RETURN e.id as id, e.creator as creator`)
+		session1, err := s.drv.Session(neo4j.AccessModeRead)
+		if err != nil {
+			panic(err)
+		}
+		defer session1.Close()
+
+		_, err = session0.ReadTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
+			cursor, err := search(ctx, `MATCH (e:Event) RETURN e.id as id, e.creator as creator`)
 			if err != nil {
 				panic(err)
 			}
 
-			for res.Next() {
-				ff := readFields(res.Record())
+			for cursor.Next() {
+				ff := readFields(cursor.Record())
 				id := ff["id"].(string)
-				if eventHash(id).Epoch() != epoch {
+				e := eventHash(id)
+				if e.Epoch() != epoch {
 					continue
 				}
 				header := new(inter.EventHeaderData)
 				unmarshal(ff, header)
 
-				_, err = session.ReadTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
-					res, err := search(ctx, `MATCH (e:Event %s)-[:PARENT]->(p) RETURN p.id`,
-						fields{"id": id},
-					)
-					if err != nil {
-						panic(err)
-					}
-					for res.Next() {
-						p := eventHash(res.Record().GetByIndex(0).(string))
-						header.Parents = append(header.Parents, p)
-					}
-					return nil, nil
-				})
-				if err != nil {
-					ignoreFakeError(err)
-				}
+				header.Parents = s.getParents(session1, e)
 
-				events <- header
+				events <- &storedEvent{
+					OriginHash:      e,
+					EventHeaderData: header,
+				}
 			}
 			return nil, nil
 		})
@@ -228,8 +223,34 @@ func (s *Db) getEvents(epoch idx.Epoch) <-chan *inter.EventHeaderData {
 	return events
 }
 
+func (s *Db) getParents(session neo4j.Session, e hash.Event) hash.Events {
+	var parents hash.Events
+	id := eventID(e)
+	_, err := session.ReadTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
+		cursor, err := search(ctx, `MATCH (e:Event %s)-[:PARENT]->(p) RETURN p.id`,
+			fields{"id": id},
+		)
+		if err != nil {
+			panic(err)
+		}
+		for cursor.Next() {
+			p := eventHash(cursor.Record().GetByIndex(0).(string))
+			parents = append(parents, p)
+		}
+		return nil, nil
+	})
+	if err != nil {
+		ignoreFakeError(err)
+	}
+
+	return parents
+}
+
 // Load data from events chain.
 func (s *Db) Load(events <-chan ToStore) {
+	s.busy.Add(1)
+	defer s.busy.Done()
+
 	session, err := s.drv.Session(neo4j.AccessModeWrite)
 	if err != nil {
 		panic(err)
@@ -257,9 +278,10 @@ func (s *Db) Load(events <-chan ToStore) {
 			}
 
 			for _, p := range event.Parents {
+				pid := eventID(p)
 				err = exec(ctx, `MATCH (e:Event %s), (p:Event %s) CREATE (e)-[:PARENT]->(p)`,
 					fields{"id": id},
-					fields{"id": eventID(p)},
+					fields{"id": pid},
 				)
 				if err != nil {
 					panic(err)
@@ -297,6 +319,9 @@ func (s *Db) Load(events <-chan ToStore) {
 
 // FindAncestors of event.
 func (s *Db) FindAncestors(e hash.Event) []hash.Event {
+	s.busy.Add(1)
+	defer s.busy.Done()
+
 	session, err := s.drv.Session(neo4j.AccessModeRead)
 	if err != nil {
 		panic(err)
@@ -306,7 +331,7 @@ func (s *Db) FindAncestors(e hash.Event) []hash.Event {
 	id := eventID(e)
 
 	res, err := session.ReadTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
-		res, err := search(ctx, "MATCH (p:Event %s)-[:PARENT*]->(s:Event) RETURN DISTINCT s.id", fields{
+		cursor, err := search(ctx, "MATCH (p:Event %s)-[:PARENT*]->(s:Event) RETURN DISTINCT s.id", fields{
 			"id": id,
 		})
 		if err != nil {
@@ -314,8 +339,8 @@ func (s *Db) FindAncestors(e hash.Event) []hash.Event {
 		}
 
 		var ancestors []hash.Event
-		for res.Next() {
-			pid := eventHash(res.Record().GetByIndex(0).(string))
+		for cursor.Next() {
+			pid := eventHash(cursor.Record().GetByIndex(0).(string))
 			ancestors = append(ancestors, pid)
 		}
 		return ancestors, nil
@@ -328,12 +353,16 @@ func (s *Db) FindAncestors(e hash.Event) []hash.Event {
 }
 
 func (s *Db) setEpoch(num idx.Epoch) {
-	const key = "current"
+	s.busy.Add(1)
+	defer s.busy.Done()
+
 	session, err := s.drv.Session(neo4j.AccessModeWrite)
 	if err != nil {
 		panic(err)
 	}
 	defer session.Close()
+
+	const key = "current"
 
 	_, err = session.WriteTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
 		defer ctx.Close()
@@ -352,7 +381,8 @@ func (s *Db) setEpoch(num idx.Epoch) {
 }
 
 func (s *Db) GetEpoch() idx.Epoch {
-	const key = "current"
+	s.busy.Add(1)
+	defer s.busy.Done()
 
 	session, err := s.drv.Session(neo4j.AccessModeRead)
 	if err != nil {
@@ -360,16 +390,18 @@ func (s *Db) GetEpoch() idx.Epoch {
 	}
 	defer session.Close()
 
+	const key = "current"
+
 	res, err := session.ReadTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
-		res, err := search(ctx, `MATCH (e:Epoch %s) RETURN e.num as num`, fields{
+		cursor, err := search(ctx, `MATCH (e:Epoch %s) RETURN e.num as num`, fields{
 			"id": key,
 		})
 		if err != nil {
 			panic(err)
 		}
 
-		for res.Next() {
-			epoch := idx.Epoch(res.Record().GetByIndex(0).(int64))
+		for cursor.Next() {
+			epoch := idx.Epoch(cursor.Record().GetByIndex(0).(int64))
 			return epoch, nil
 		}
 		return nil, nil
