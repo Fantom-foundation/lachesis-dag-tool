@@ -88,6 +88,7 @@ func newStack() *node.Node {
 			NAT:              nat.Any(),
 			BootstrapNodesV5: parseBootstrapNodes(params.Bootnodes),
 		},
+		NoUSB: true,
 	}
 
 	stack, err := node.New(&cfg)
