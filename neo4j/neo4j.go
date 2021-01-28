@@ -81,7 +81,7 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
-func (s *Store) HasEventHeader(e hash.Event) bool {
+func (s *Store) HasEvent(e hash.Event) bool {
 	// Get event from LRU cache first.
 	if _, ok := s.cache.EventsHeaders.Get(e); ok {
 		return true
@@ -174,7 +174,7 @@ func (s *Store) GetEvent(e hash.Event) *inter.EventHeaderData {
 }
 
 // Load data from events chain.
-func (s *Store) Load(events <-chan *EventData) {
+func (s *Store) Load(events <-chan ToStore) {
 	session, err := s.db.Session(neo4j.AccessModeWrite)
 	if err != nil {
 		panic(err)
@@ -188,13 +188,13 @@ func (s *Store) Load(events <-chan *EventData) {
 		total    int64
 		last     hash.Event
 	)
-	for edata := range events {
-		event := edata.Event
+	for task := range events {
+		event := task.Payload()
 		id := eventID(event.Hash())
 		_, err = session.WriteTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
 			defer ctx.Close()
 
-			data := marshal(&event.EventHeaderData)
+			data := marshal(event)
 			log.Debug("<<<", "event", event.Hash(), "data", data, "parents", event.Parents)
 			err = exec(ctx, "CREATE (e:Event %s)", data)
 			if err != nil {
@@ -217,10 +217,8 @@ func (s *Store) Load(events <-chan *EventData) {
 			ignoreFakeError(err)
 		}
 
-		s.cache.EventsHeaders.Add(event.Hash(), &event.EventHeaderData)
-		if edata.Ready != nil {
-			edata.Ready()
-		}
+		s.cache.EventsHeaders.Add(event.Hash(), event)
+		task.Done()
 
 		counter.Incr(1)
 		total++

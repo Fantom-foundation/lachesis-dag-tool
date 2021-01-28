@@ -4,7 +4,7 @@ import (
 	"github.com/Fantom-foundation/go-lachesis/inter"
 )
 
-type EventData struct {
-	Event *inter.Event
-	Ready func()
+type ToStore interface {
+	Payload() *inter.EventHeaderData
+	Done()
 }

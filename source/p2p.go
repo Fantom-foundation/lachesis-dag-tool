@@ -26,8 +26,6 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethereum/go-ethereum/p2p/nat"
-
-	"github.com/Fantom-foundation/lachesis-dag-tool/neo4j"
 )
 
 const (
@@ -44,30 +42,24 @@ const (
 	maxPackEventsNum = softLimitItems
 )
 
-func EventsFromP2p(ctx context.Context, network string, from, to idx.Epoch, store *neo4j.Store) <-chan *neo4j.EventData {
+func EventsFromP2p(ctx context.Context, network string, from, to idx.Epoch, store Store) {
 	log.Info("Events of epoches", "from", from, "to", to, "network", network)
-	output := make(chan *neo4j.EventData, 1)
+	defer store.Close()
 
-	svc := newService(network, output, from, to, store)
+	svc := newService(network, from, to, store)
 	stack := newStack()
 	stack.RegisterProtocols(svc.Protocols())
 	stack.RegisterLifecycle(svc)
 	svc.p2pServer = stack.Server()
 
-	go func() {
-		defer close(output)
+	err := stack.Start()
+	if err != nil {
+		log.Error("Error starting protocol stack", "err", err)
+		return
+	}
+	defer stack.Close()
 
-		err := stack.Start()
-		if err != nil {
-			log.Error("Error starting protocol stack", "err", err)
-			return
-		}
-		defer stack.Close()
-
-		<-ctx.Done()
-	}()
-
-	return output
+	<-ctx.Done()
 }
 
 func newStack() *node.Node {
@@ -102,7 +94,6 @@ func newStack() *node.Node {
 type service struct {
 	net     lachesis.Config
 	genesis common.Hash
-	output  chan<- *neo4j.EventData
 
 	// server
 	p2pServer  *p2p.Server
@@ -112,14 +103,14 @@ type service struct {
 	downloader *packsdownloader.PacksDownloader
 	fetcher    *fetcher.Fetcher
 	buffer     *ordering.EventBuffer
-	store      *neo4j.Store
+	store      Store
 	status     *status
 
 	done chan struct{}
 	wg   sync.WaitGroup
 }
 
-func newService(network string, output chan<- *neo4j.EventData, from, to idx.Epoch, store *neo4j.Store) *service {
+func newService(network string, from, to idx.Epoch, store Store) *service {
 	currEpoch := store.GetEpoch()
 	if from < currEpoch {
 		from = currEpoch
@@ -140,10 +131,9 @@ func newService(network string, output chan<- *neo4j.EventData, from, to idx.Epo
 		panic("unknow network " + network)
 	}
 
-	svc := &service{
+	s := &service{
 		net:     net,
 		genesis: genesis,
-		output:  output,
 
 		peers: gossip.NewPeerSet(),
 		store: store,
@@ -155,31 +145,28 @@ func newService(network string, output chan<- *neo4j.EventData, from, to idx.Epo
 
 	trustedNodes := []string{}
 	db := memorydb.New()
-	svc.serverPool = gossip.NewServerPool(db, svc.done, &svc.wg, trustedNodes)
+	s.serverPool = gossip.NewServerPool(db, s.done, &s.wg, trustedNodes)
 
-	svc.buffer = ordering.New(eventsBuffSize, ordering.Callback{
+	s.buffer = ordering.New(eventsBuffSize, ordering.Callback{
 		Process: func(event *inter.Event) error {
 			if to > 0 && to < event.Epoch {
-				close(output)
+				s.store.Close()
 				return nil
 			}
 
-			var wg sync.WaitGroup
-			wg.Add(1)
-			output <- &neo4j.EventData{Event: event, Ready: wg.Done}
-			wg.Wait()
+			s.store.Save(&event.EventHeaderData)
 
-			if svc.status.IsEpochSealedBy(event.Hash()) {
-				epoch := svc.status.CurrEpoch()
+			if s.status.IsEpochSealedBy(event.Hash()) {
+				epoch := s.status.CurrEpoch()
 				store.SetEpoch(epoch)
 				peerEpoch := func(peer string) idx.Epoch {
-					p := svc.peers.Peer(peer)
+					p := s.peers.Peer(peer)
 					if p == nil {
 						return 0
 					}
 					return p.Progress.Epoch
 				}
-				svc.downloader.OnNewEpoch(epoch, peerEpoch)
+				s.downloader.OnNewEpoch(epoch, peerEpoch)
 			}
 
 			return nil
@@ -187,10 +174,10 @@ func newService(network string, output chan<- *neo4j.EventData, from, to idx.Epo
 		Drop: func(event *inter.Event, peer string, err error) {
 		},
 		Exists: func(id hash.Event) bool {
-			return svc.store.HasEventHeader(id)
+			return s.store.HasEvent(id)
 		},
 		Get: func(id hash.Event) *inter.EventHeaderData {
-			event := svc.store.GetEvent(id)
+			event := s.store.GetEvent(id)
 			if event != nil {
 				log.Debug("read from db", "event", id, "parents", event.Parents)
 			} else {
@@ -203,19 +190,19 @@ func newService(network string, output chan<- *neo4j.EventData, from, to idx.Epo
 		},
 	})
 
-	svc.fetcher = fetcher.New(fetcher.Callback{
+	s.fetcher = fetcher.New(fetcher.Callback{
 		PushEvent: func(e *inter.Event, peer string) {
 			// log.Info("+++", "event", e.Hash(), "parents", e.Parents)
-			svc.buffer.PushEvent(e, peer)
+			s.buffer.PushEvent(e, peer)
 		},
-		OnlyInterested: svc.onlyInterestedEvents,
-		DropPeer:       svc.removePeer,
+		OnlyInterested: s.onlyInterestedEvents,
+		DropPeer:       s.removePeer,
 		FirstCheck:     func(*inter.Event) error { return nil },
 		HeavyCheck:     nil,
 	})
-	svc.downloader = packsdownloader.New(svc.fetcher, svc.onlyNotConnectedEvents, svc.removePeer)
+	s.downloader = packsdownloader.New(s.fetcher, s.onlyNotConnectedEvents, s.removePeer)
 
-	return svc
+	return s
 }
 
 // Start is called after all services have been constructed and the networking
@@ -401,7 +388,7 @@ func (s *service) handleMsg(p *gossip.Peer) error {
 			if len(info.Heads) == 0 {
 				return errResp(gossip.ErrEmptyMessage, "%v", msg)
 			}
-			s.status.AddHeaders(infos.Epoch, info.Heads, s.store.HasEventHeader)
+			s.status.AddHeaders(infos.Epoch, info.Heads, s.store.HasEvent)
 			// Mark the hashes as present at the remote node
 			for _, id := range info.Heads {
 				p.MarkEvent(id)
@@ -486,7 +473,7 @@ func (s *service) onlyNotConnectedEvents(ids hash.Events) hash.Events {
 	}
 	notConnected := make(hash.Events, 0, len(ids))
 	for _, id := range ids {
-		if s.store.HasEventHeader(id) {
+		if s.store.HasEvent(id) {
 			continue
 		}
 		notConnected.Add(id)
@@ -506,7 +493,7 @@ func (s *service) onlyInterestedEvents(ids hash.Events) hash.Events {
 		if id.Epoch() != epoch {
 			continue
 		}
-		if s.buffer.IsBuffered(id) || s.store.HasEventHeader(id) {
+		if s.buffer.IsBuffered(id) || s.store.HasEvent(id) {
 			continue
 		}
 		interested.Add(id)
