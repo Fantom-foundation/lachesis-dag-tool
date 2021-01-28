@@ -256,17 +256,14 @@ func (s *Db) Load(events <-chan ToStore) {
 		panic(err)
 	}
 	defer session.Close()
-	// DML
-	var (
-		start    = time.Now().Add(-10 * time.Millisecond)
-		reported time.Time
-		counter  = ratecounter.NewRateCounter(60 * time.Second).WithResolution(1)
-		total    int64
-		last     hash.Event
-	)
+
+	parents := make(chan ToStore, 10)
+	defer close(parents)
+
+	go s.loadParents(parents)
+
 	for task := range events {
 		event := task.Payload()
-		id := eventID(event.Hash())
 		_, err = session.WriteTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
 			defer ctx.Close()
 
@@ -276,6 +273,41 @@ func (s *Db) Load(events <-chan ToStore) {
 			if err != nil {
 				panic(err)
 			}
+
+			return nil, ctx.Commit()
+		})
+		if err != nil {
+			ignoreFakeError(err)
+		}
+
+		parents <- task
+	}
+}
+
+func (s *Db) loadParents(events <-chan ToStore) {
+	s.busy.Add(1)
+	defer s.busy.Done()
+
+	session, err := s.drv.Session(neo4j.AccessModeWrite)
+	if err != nil {
+		panic(err)
+	}
+	defer session.Close()
+
+	var (
+		start    = time.Now().Add(-10 * time.Millisecond)
+		reported time.Time
+		counter  = ratecounter.NewRateCounter(60 * time.Second).WithResolution(1)
+		total    int64
+		last     hash.Event
+	)
+
+	for task := range events {
+		event := task.Payload()
+		e := event.Hash()
+		id := eventID(e)
+		_, err = session.WriteTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
+			defer ctx.Close()
 
 			for _, p := range event.Parents {
 				pid := eventID(p)
@@ -287,14 +319,13 @@ func (s *Db) Load(events <-chan ToStore) {
 					panic(err)
 				}
 			}
-
 			return nil, ctx.Commit()
 		})
 		if err != nil {
 			ignoreFakeError(err)
 		}
 
-		s.cache.EventsHeaders.Add(event.Hash(), event)
+		s.cache.EventsHeaders.Add(e, event)
 		task.Done()
 
 		counter.Incr(1)
