@@ -4,10 +4,9 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/Fantom-foundation/go-lachesis/inter/idx"
-
 	"github.com/Fantom-foundation/go-lachesis/hash"
 	"github.com/Fantom-foundation/go-lachesis/inter"
+	"github.com/Fantom-foundation/go-lachesis/inter/idx"
 	"github.com/neo4j/neo4j-go-driver/neo4j"
 )
 

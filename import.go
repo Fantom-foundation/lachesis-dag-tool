@@ -53,14 +53,16 @@ func actImport(ctx context.Context, cli *cli.Context) (err error) {
 		return
 	}
 
-	store, err := neo4j.New(dst)
+	db, err := neo4j.New(dst)
 	if err != nil {
 		return
 	}
-	defer store.Close()
+	defer db.Close()
 
-	events := source.EventsFromDatadir(ctx, src, from, to, store)
-	store.Load(events)
+	store := newStore(db, false)
+	go source.EventsFromDatadir(ctx, src, from, to, store)
+	store.WaitForAll()
+
 	return nil
 }
 
@@ -72,14 +74,17 @@ func actListen(ctx context.Context, cli *cli.Context) error {
 		return err
 	}
 
-	store, err := neo4j.New(dst)
+	disk, err := neo4j.New(dst)
 	if err != nil {
 		return err
 	}
-	defer store.Close()
+	db := neo4j.NewCachedDb(disk)
+	defer db.Close()
 
-	events := source.EventsFromP2p(ctx, network, from, to, store)
-	store.Load(events)
+	store := newStore(db, true)
+	go source.EventsFromP2p(ctx, network, from, to, store)
+	store.WaitForAll()
+
 	return nil
 }
 

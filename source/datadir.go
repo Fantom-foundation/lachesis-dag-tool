@@ -13,49 +13,38 @@ import (
 	"github.com/Fantom-foundation/go-lachesis/inter/idx"
 	"github.com/Fantom-foundation/go-lachesis/kvdb/flushable"
 	"github.com/ethereum/go-ethereum/log"
-
-	"github.com/Fantom-foundation/lachesis-dag-tool/neo4j"
 )
 
-func EventsFromDatadir(ctx context.Context, dataDir string, from, to idx.Epoch, store *neo4j.Store) <-chan *neo4j.EventData {
+func EventsFromDatadir(ctx context.Context, dataDir string, from, to idx.Epoch, store Store) {
 	log.Info("Events of epoches", "from", from, "to", to, "datadir", dataDir)
-	output := make(chan *neo4j.EventData, 10)
+	defer store.Close()
 
 	currEpoch := store.GetEpoch()
 	if from < currEpoch {
 		from = currEpoch
 	}
 
-	go func() {
-		defer close(output)
+	gdb := makeGossipStore(dataDir)
+	defer gdb.Close()
 
-		gdb := makeGossipStore(dataDir)
-		defer gdb.Close()
+	gdb.ForEachEvent(from, func(event *inter.Event) bool {
+		if to > 0 && to < event.Epoch {
+			return false
+		}
 
-		gdb.ForEachEvent(from, func(event *inter.Event) bool {
-			if from < event.Epoch {
-				from = event.Epoch
-				store.SetEpoch(from)
-			}
-			if to > 0 && to < event.Epoch {
-				return false
-			}
-
-			if store.HasEventHeader(event.Hash()) {
-				return true
-			}
-
-			select {
-			case <-ctx.Done():
-				return false
-			case output <- &neo4j.EventData{Event: event}:
-				log.Debug(">>>", "event", event.Hash())
-			}
+		if store.HasEvent(event.Hash()) {
 			return true
-		})
-	}()
+		}
 
-	return output
+		select {
+		case <-ctx.Done():
+			return false
+		default:
+			store.Save(&event.EventHeaderData)
+			log.Debug(">>>", "event", event.Hash())
+		}
+		return true
+	})
 }
 
 func makeGossipStore(dataDir string) *gossip.Store {
