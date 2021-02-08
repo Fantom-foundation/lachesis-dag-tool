@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/core/types"
@@ -12,6 +13,7 @@ func (g *TransfersGenerator) transferTx(from, to *Acc, nonce uint) TxMaker {
 
 	return func(client *ethclient.Client) (*types.Transaction, error) {
 		tx := from.TransactionTo(to, nonce, amount, g.chainId)
-		return tx, nil
+		err := client.SendTransaction(context.Background(), tx)
+		return tx, err
 	}
 }

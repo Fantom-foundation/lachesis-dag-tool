@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/Fantom-foundation/go-lachesis/logger"
+	"github.com/ethereum/go-ethereum/core/types"
 
 	"github.com/Fantom-foundation/lachesis-dag-tool/txsgen/utils"
 )
@@ -72,7 +72,7 @@ func (n *Nodes) measureTPS() {
 
 		start = time.Now()
 		avg := avgbuff.Avg()
-		if abs(prev-avg) >= 1.0 {
+		if abs(prev-avg) >= 0.1 {
 			prev = avg
 			n.notifyTPS(avg)
 			n.Log.Info("TPS", "value", tps, "avg", avg)
