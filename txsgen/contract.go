@@ -31,7 +31,7 @@ func ballotRandChose() int64 {
 	return rand.Int63n(int64(len(ballotOptions)))
 }
 
-func (g *Generator) ballotCreateContract(admin uint) TxMaker {
+func (g *CallsGenerator) ballotCreateContract(admin uint) TxMaker {
 	payer := g.Payer(admin)
 	return func(client *ethclient.Client) (*types.Transaction, error) {
 		_, tx, _, err := ballot.DeployContract(payer, client, ballotOptions)
@@ -43,7 +43,7 @@ func (g *Generator) ballotCreateContract(admin uint) TxMaker {
 	}
 }
 
-func (g *Generator) ballotVoite(voiter uint, addr common.Address, proposal int64) TxMaker {
+func (g *CallsGenerator) ballotVoite(voiter uint, addr common.Address, proposal int64) TxMaker {
 	payer := g.Payer(voiter)
 	return func(client *ethclient.Client) (*types.Transaction, error) {
 		transactor, err := ballot.NewContractTransactor(addr, client)
@@ -55,7 +55,7 @@ func (g *Generator) ballotVoite(voiter uint, addr common.Address, proposal int64
 	}
 }
 
-func (g *Generator) ballotWinner(addr common.Address) TxMaker {
+func (g *CallsGenerator) ballotWinner(addr common.Address) TxMaker {
 	return func(client *ethclient.Client) (*types.Transaction, error) {
 		caller, err := ballot.NewContractCaller(addr, client)
 		if err != nil {

@@ -23,15 +23,19 @@ var (
 	app = utils.NewApp(gitCommit, gitDate, "the transactions generator CLI")
 
 	flags []cli.Flag
+
+	mainCfg *Config
 )
 
 // init the CLI app.
 func init() {
-	app.Action = generatorMain
+	app.Action = generateCalls
 	app.Version = params.VersionWithCommit(gitCommit, gitDate)
 
 	app.Commands = []cli.Command{}
 	sort.Sort(cli.CommandsByName(app.Commands))
+
+	app.Before = before
 
 	app.Flags = append(app.Flags,
 		ConfigFileFlag,
@@ -50,20 +54,33 @@ func main() {
 	}
 }
 
-// generatorMain is the main entry point.
-func generatorMain(ctx *cli.Context) error {
+func before(ctx *cli.Context) error {
 	glogger := log.NewGlogHandler(log.StreamHandler(os.Stderr, log.TerminalFormat(false)))
 	glogger.Verbosity(log.Lvl(ctx.GlobalInt(VerbosityFlag.Name)))
 	log.Root().SetHandler(glogger)
 
 	SetupPrometheus(ctx)
+	mainCfg = OpenConfig(ctx)
 
-	cfg := OpenConfig(ctx)
+	return nil
+}
+
+// generateCalls action.
+func generateCalls(ctx *cli.Context) error {
+	cfg := mainCfg
 	num, ofTotal := getNumber(ctx)
 
-	generator := NewTxGenerator(cfg, num, ofTotal)
+	generator := NewCallsGenerator(cfg, num, ofTotal)
 	defer generator.Stop()
-	generator.SetName(fmt.Sprintf("TxGen-%d", num))
+	generator.SetName(fmt.Sprintf("CallsGen-%d", num))
+
+	err := generate(generator)
+	return err
+}
+
+// generate is the main generate loop.
+func generate(generator Generator) error {
+	cfg := mainCfg
 	txs := generator.Start()
 
 	nodes := NewNodes(cfg, txs)

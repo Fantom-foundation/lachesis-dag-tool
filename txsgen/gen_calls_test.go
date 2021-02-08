@@ -16,7 +16,7 @@ func TestGenerator(t *testing.T) {
 			Offset: 100,
 		},
 	}
-	g := NewTxGenerator(cfg, 1, 1)
+	g := NewCallsGenerator(cfg, 1, 1)
 	for i := 0; i < 2*len(g.accs); i++ {
 		_ = g.Yield()
 	}

@@ -8,23 +8,13 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Fantom-foundation/go-lachesis/logger"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/Fantom-foundation/go-lachesis/logger"
 )
 
-type TxMaker func(*ethclient.Client) (*types.Transaction, error)
-type TxCallback func(*types.Receipt, error)
-
-type Transaction struct {
-	Make     TxMaker
-	Callback TxCallback
-	Dsc      string
-}
-
-type Generator struct {
+type CallsGenerator struct {
 	tps     uint32
 	chainId uint
 	signer  types.Signer
@@ -42,10 +32,10 @@ type Generator struct {
 	logger.Instance
 }
 
-func NewTxGenerator(cfg *Config, num, ofTotal uint) *Generator {
+func NewCallsGenerator(cfg *Config, num, ofTotal uint) *CallsGenerator {
 	accs := cfg.Accs.Count / ofTotal
 	offset := cfg.Accs.Offset + accs*(num-1)
-	g := &Generator{
+	g := &CallsGenerator{
 		chainId:   uint(cfg.ChainId),
 		signer:    types.NewEIP155Signer(big.NewInt(int64(cfg.ChainId))),
 		instances: ofTotal,
@@ -58,7 +48,7 @@ func NewTxGenerator(cfg *Config, num, ofTotal uint) *Generator {
 	return g
 }
 
-func (g *Generator) Start() (output chan *Transaction) {
+func (g *CallsGenerator) Start() (output chan *Transaction) {
 	g.Lock()
 	defer g.Unlock()
 
@@ -75,7 +65,7 @@ func (g *Generator) Start() (output chan *Transaction) {
 	return
 }
 
-func (g *Generator) Stop() {
+func (g *CallsGenerator) Stop() {
 	g.Lock()
 	defer g.Unlock()
 
@@ -88,17 +78,17 @@ func (g *Generator) Stop() {
 	g.done = nil
 }
 
-func (g *Generator) getTPS() float64 {
+func (g *CallsGenerator) getTPS() float64 {
 	tps := atomic.LoadUint32(&g.tps)
 	return float64(tps)
 }
 
-func (g *Generator) SetTPS(tps float64) {
+func (g *CallsGenerator) SetTPS(tps float64) {
 	x := uint32(math.Ceil(tps / float64(g.instances)))
 	atomic.StoreUint32(&g.tps, x)
 }
 
-func (g *Generator) background(output chan<- *Transaction) {
+func (g *CallsGenerator) background(output chan<- *Transaction) {
 	defer g.work.Done()
 	defer close(output)
 
@@ -143,7 +133,7 @@ func (g *Generator) background(output chan<- *Transaction) {
 	}
 }
 
-func (g *Generator) Yield() *Transaction {
+func (g *CallsGenerator) Yield() *Transaction {
 	if !g.generatorState.IsReady(g.done) {
 		return nil
 	}
@@ -180,7 +170,7 @@ func (s *genState) Ready() {
 	close(s.ready)
 }
 
-func (g *Generator) generate(position uint, state *genState) *Transaction {
+func (g *CallsGenerator) generate(position uint, state *genState) *Transaction {
 	// count := uint(len(g.accs))
 	var (
 		maker    TxMaker
@@ -222,7 +212,7 @@ func (g *Generator) generate(position uint, state *genState) *Transaction {
 	}
 }
 
-func (g *Generator) Payer(n uint, amounts ...*big.Int) *bind.TransactOpts {
+func (g *CallsGenerator) Payer(n uint, amounts ...*big.Int) *bind.TransactOpts {
 	from := g.accs[n]
 	if from == nil {
 		from = MakeAcc(n + g.offset)
@@ -239,6 +229,6 @@ func (g *Generator) Payer(n uint, amounts ...*big.Int) *bind.TransactOpts {
 	return t
 }
 
-func (g *Generator) ReadOnly() *bind.CallOpts {
+func (g *CallsGenerator) ReadOnly() *bind.CallOpts {
 	return &bind.CallOpts{}
 }
