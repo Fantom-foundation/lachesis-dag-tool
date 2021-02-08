@@ -25,7 +25,7 @@ var NumberFlag = cli.StringFlag{
 
 func getNumber(ctx *cli.Context) (num, total uint) {
 	var err error
-	num, total, err = parseNumber(ctx.GlobalString(NumberFlag.Name))
+	num, total, err = parseNumber(ctx.String(NumberFlag.Name))
 	if err != nil {
 		panic(err)
 	}

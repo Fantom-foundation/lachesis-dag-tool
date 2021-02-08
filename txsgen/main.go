@@ -29,22 +29,39 @@ var (
 
 // init the CLI app.
 func init() {
-	app.Action = generateCalls
 	app.Version = params.VersionWithCommit(gitCommit, gitDate)
 
-	app.Commands = []cli.Command{}
+	app.Commands = []cli.Command{
+		cli.Command{
+			Action:      generateCalls,
+			Name:        "calls",
+			Usage:       "Generates a lot of smart contract and web3-API calls.",
+			Description: `Note: uses fakenet accounts and deploys a fake contract.`,
+			Flags: []cli.Flag{
+				NumberFlag,
+			},
+		},
+		cli.Command{
+			Action:      generateTransfers,
+			Name:        "transfers",
+			Usage:       "Generates a lot of transfer transactions.",
+			Description: `Note: uses fakenet accounts.`,
+			Flags: []cli.Flag{
+				NumberFlag,
+			},
+		},
+	}
 	sort.Sort(cli.CommandsByName(app.Commands))
-
-	app.Before = before
 
 	app.Flags = append(app.Flags,
 		ConfigFileFlag,
-		NumberFlag,
 		TxnsRateFlag,
 		utils.MetricsEnabledFlag,
 		MetricsPrometheusEndpointFlag,
 		VerbosityFlag,
 	)
+
+	app.Before = before
 }
 
 func main() {
@@ -73,6 +90,19 @@ func generateCalls(ctx *cli.Context) error {
 	generator := NewCallsGenerator(cfg, num, ofTotal)
 	defer generator.Stop()
 	generator.SetName(fmt.Sprintf("CallsGen-%d", num))
+
+	err := generate(generator)
+	return err
+}
+
+// generateTransfers action.
+func generateTransfers(ctx *cli.Context) error {
+	//cfg := mainCfg
+	//num, ofTotal := getNumber(ctx)
+
+	generator := (Generator)(nil) // TODO: constructor
+	defer generator.Stop()
+	//generator.SetName(fmt.Sprintf("TransfersGen-%d", num))
 
 	err := generate(generator)
 	return err
