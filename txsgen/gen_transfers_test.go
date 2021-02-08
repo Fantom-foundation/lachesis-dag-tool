@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-func TestCallsGenerator(t *testing.T) {
+func TestTransfersGenerator(t *testing.T) {
 	t.Skip("example only")
 	cfg := &Config{
 		ChainId: 999,
@@ -16,7 +16,7 @@ func TestCallsGenerator(t *testing.T) {
 			Offset: 100,
 		},
 	}
-	g := NewCallsGenerator(cfg, 1, 1)
+	g := NewTransfersGenerator(cfg, 1, 1)
 	for i := 0; i < 2*len(g.accs); i++ {
 		_ = g.Yield()
 	}

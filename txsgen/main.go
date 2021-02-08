@@ -97,12 +97,12 @@ func generateCalls(ctx *cli.Context) error {
 
 // generateTransfers action.
 func generateTransfers(ctx *cli.Context) error {
-	//cfg := mainCfg
-	//num, ofTotal := getNumber(ctx)
+	cfg := mainCfg
+	num, ofTotal := getNumber(ctx)
 
-	generator := (Generator)(nil) // TODO: constructor
+	generator := NewTransfersGenerator(cfg, num, ofTotal)
 	defer generator.Stop()
-	//generator.SetName(fmt.Sprintf("TransfersGen-%d", num))
+	generator.SetName(fmt.Sprintf("TransfersGen-%d", num))
 
 	err := generate(generator)
 	return err
