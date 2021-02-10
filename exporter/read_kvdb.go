@@ -10,7 +10,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/urfave/cli"
 
-	"github.com/Fantom-foundation/lachesis-dag-tool/source"
+	"github.com/Fantom-foundation/lachesis-dag-tool/exporter/source"
 )
 
 var (

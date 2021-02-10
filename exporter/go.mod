@@ -1,4 +1,4 @@
-module github.com/Fantom-foundation/lachesis-dag-tool
+module github.com/Fantom-foundation/lachesis-dag-tool/exporter
 
 go 1.14
 

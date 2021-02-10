@@ -7,7 +7,7 @@ import (
 	"github.com/Fantom-foundation/go-lachesis/inter"
 	"github.com/Fantom-foundation/go-lachesis/inter/idx"
 
-	"github.com/Fantom-foundation/lachesis-dag-tool/neo4j"
+	"github.com/Fantom-foundation/lachesis-dag-tool/exporter/neo4j"
 )
 
 type task struct {

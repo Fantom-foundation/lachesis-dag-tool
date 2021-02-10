@@ -7,8 +7,8 @@ import (
 	"github.com/Fantom-foundation/go-lachesis/inter/idx"
 	"github.com/urfave/cli"
 
-	"github.com/Fantom-foundation/lachesis-dag-tool/neo4j"
-	"github.com/Fantom-foundation/lachesis-dag-tool/source"
+	"github.com/Fantom-foundation/lachesis-dag-tool/exporter/neo4j"
+	"github.com/Fantom-foundation/lachesis-dag-tool/exporter/source"
 )
 
 var (

@@ -10,7 +10,7 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/urfave/cli"
 
-	"github.com/Fantom-foundation/lachesis-dag-tool/neo4j"
+	"github.com/Fantom-foundation/lachesis-dag-tool/exporter/neo4j"
 )
 
 var (
