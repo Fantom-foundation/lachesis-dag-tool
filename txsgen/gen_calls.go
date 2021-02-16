@@ -180,7 +180,7 @@ func (g *CallsGenerator) generate(position uint, state *genState) *Transaction {
 
 	a := position % uint(len(g.accs))
 
-	switch step := (position % 10001); {
+	switch step := (position % 100001); {
 
 	case step == 0:
 		dsc = "ballot contract creation"
@@ -191,13 +191,13 @@ func (g *CallsGenerator) generate(position uint, state *genState) *Transaction {
 			state.Ready()
 		}
 
-	case 0 < step && step < 10000:
+	case 0 < step && step < 100000:
 		chose := ballotRandChose()
 		dsc = fmt.Sprintf("%d voites for %d", a, chose)
 		maker = g.ballotVoite(a, state.BallotAddr, chose)
 		break
 
-	case step == 10000:
+	case step == 100000:
 		dsc = "ballot winner reading"
 		maker = g.ballotWinner(state.BallotAddr)
 
