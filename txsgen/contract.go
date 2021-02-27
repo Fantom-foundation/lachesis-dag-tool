@@ -46,7 +46,7 @@ func (g *CallsGenerator) ballotCreateContract(admin uint) TxMaker {
 	}
 }
 
-func (g *CallsGenerator) ballotVoite(voiter uint, addr common.Address, proposal int64) TxMaker {
+func (g *CallsGenerator) ballotCountOfVoites(voiter uint, addr common.Address) TxMaker {
 	payer := g.Payer(voiter, big.NewInt(100))
 	return func(client *ethclient.Client) (*types.Transaction, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -62,14 +62,22 @@ func (g *CallsGenerator) ballotVoite(voiter uint, addr common.Address, proposal 
 		logs, err := filterer.FilterVoiting(opts, []common.Address{payer.From}, nil, nil)
 		if err != nil {
 			g.Log.Error("filterer.FilterVoiting()", "err", err)
-		} else {
-			defer logs.Close()
-			var count int
-			for ; logs.Next(); count++ {
-			}
-			g.Log.Info("prev voites", "count", count)
+			return nil, nil
 		}
+		defer logs.Close()
 
+		var count int
+		for ; logs.Next(); count++ {
+		}
+		g.Log.Info("prev voites", "count", count)
+
+		return nil, nil
+	}
+}
+
+func (g *CallsGenerator) ballotVoite(voiter uint, addr common.Address, proposal int64) TxMaker {
+	payer := g.Payer(voiter, big.NewInt(100))
+	return func(client *ethclient.Client) (*types.Transaction, error) {
 		transactor, err := ballot.NewContractTransactor(addr, client)
 		if err != nil {
 			panic(err)
