@@ -4,13 +4,17 @@ package main
 //go:generate go run github.com/ethereum/go-ethereum/cmd/abigen --bin=./ballot/Ballot.bin --abi=./ballot/Ballot.abi --pkg=ballot --type=Contract --out=ballot/contract.go
 
 import (
+	"context"
 	"math/big"
 	"math/rand"
+	"time"
 
+	"github.com/Fantom-foundation/go-lachesis/hash"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/Fantom-foundation/go-lachesis/hash"
+	"github.com/ethereum/go-ethereum/log"
 
 	"github.com/Fantom-foundation/lachesis-dag-tool/txsgen/ballot"
 )
@@ -44,8 +48,27 @@ func (g *CallsGenerator) ballotCreateContract(admin uint) TxMaker {
 }
 
 func (g *CallsGenerator) ballotVoite(voiter uint, addr common.Address, proposal int64) TxMaker {
-	payer := g.Payer(voiter)
+	payer := g.Payer(voiter, big.NewInt(100))
 	return func(client *ethclient.Client) (*types.Transaction, error) {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		opts := &bind.FilterOpts{
+			Context: ctx,
+		}
+		filterer, err := ballot.NewContractFilterer(addr, client)
+		if err != nil {
+			panic(err)
+		}
+		logs, err := filterer.FilterVoiting(opts, []common.Address{addr}, nil, nil)
+		if err != nil {
+			panic(err)
+		}
+		defer logs.Close()
+		for logs.Next() {
+			log.Debug("prev voiting", "for", logs.Event.Text)
+		}
+
 		transactor, err := ballot.NewContractTransactor(addr, client)
 		if err != nil {
 			panic(err)
