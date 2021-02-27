@@ -14,7 +14,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/ethereum/go-ethereum/log"
 
 	"github.com/Fantom-foundation/lachesis-dag-tool/txsgen/ballot"
 )
@@ -60,13 +59,15 @@ func (g *CallsGenerator) ballotVoite(voiter uint, addr common.Address, proposal 
 		if err != nil {
 			panic(err)
 		}
-		logs, err := filterer.FilterVoiting(opts, []common.Address{addr}, nil, nil)
+		logs, err := filterer.FilterVoiting(opts, []common.Address{payer.From}, nil, nil)
 		if err != nil {
-			panic(err)
-		}
-		defer logs.Close()
-		for logs.Next() {
-			log.Debug("prev voiting", "for", logs.Event.Text)
+			g.Log.Error("filterer.FilterVoiting()", "err", err)
+		} else {
+			defer logs.Close()
+			var count int
+			for ; logs.Next(); count++ {
+			}
+			g.Log.Info("prev voites", "count", count)
 		}
 
 		transactor, err := ballot.NewContractTransactor(addr, client)
