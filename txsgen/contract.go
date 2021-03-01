@@ -46,7 +46,7 @@ func (g *CallsGenerator) ballotCreateContract(admin uint) TxMaker {
 	}
 }
 
-func (g *CallsGenerator) ballotCountOfVoites(voiter uint, addr common.Address) TxMaker {
+func (g *CallsGenerator) ballotCountOfVoites(voiter uint, contract common.Address) TxMaker {
 	payer := g.Payer(voiter, big.NewInt(100))
 	return func(client *ethclient.Client) (*types.Transaction, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -55,11 +55,11 @@ func (g *CallsGenerator) ballotCountOfVoites(voiter uint, addr common.Address) T
 		opts := &bind.FilterOpts{
 			Context: ctx,
 		}
-		filterer, err := ballot.NewContractFilterer(addr, client)
+		filterer, err := ballot.NewContractFilterer(contract, client)
 		if err != nil {
 			panic(err)
 		}
-		logs, err := filterer.FilterVoiting(opts, []common.Address{payer.From}, nil, nil)
+		logs, err := filterer.FilterVoiting(opts, []common.Address{contract, payer.From}, nil, nil)
 		if err != nil {
 			g.Log.Error("filterer.FilterVoiting()", "err", err)
 			return nil, nil
@@ -75,10 +75,10 @@ func (g *CallsGenerator) ballotCountOfVoites(voiter uint, addr common.Address) T
 	}
 }
 
-func (g *CallsGenerator) ballotVoite(voiter uint, addr common.Address, proposal int64) TxMaker {
+func (g *CallsGenerator) ballotVoite(voiter uint, contract common.Address, proposal int64) TxMaker {
 	payer := g.Payer(voiter, big.NewInt(100))
 	return func(client *ethclient.Client) (*types.Transaction, error) {
-		transactor, err := ballot.NewContractTransactor(addr, client)
+		transactor, err := ballot.NewContractTransactor(contract, client)
 		if err != nil {
 			panic(err)
 		}
@@ -87,9 +87,9 @@ func (g *CallsGenerator) ballotVoite(voiter uint, addr common.Address, proposal 
 	}
 }
 
-func (g *CallsGenerator) ballotWinner(addr common.Address) TxMaker {
+func (g *CallsGenerator) ballotWinner(contract common.Address) TxMaker {
 	return func(client *ethclient.Client) (*types.Transaction, error) {
-		caller, err := ballot.NewContractCaller(addr, client)
+		caller, err := ballot.NewContractCaller(contract, client)
 		if err != nil {
 			panic(err)
 		}
