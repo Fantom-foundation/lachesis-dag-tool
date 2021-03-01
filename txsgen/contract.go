@@ -4,13 +4,16 @@ package main
 //go:generate go run github.com/ethereum/go-ethereum/cmd/abigen --bin=./ballot/Ballot.bin --abi=./ballot/Ballot.abi --pkg=ballot --type=Contract --out=ballot/contract.go
 
 import (
+	"context"
 	"math/big"
 	"math/rand"
+	"time"
 
+	"github.com/Fantom-foundation/go-lachesis/hash"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/Fantom-foundation/go-lachesis/hash"
 
 	"github.com/Fantom-foundation/lachesis-dag-tool/txsgen/ballot"
 )
@@ -43,10 +46,39 @@ func (g *CallsGenerator) ballotCreateContract(admin uint) TxMaker {
 	}
 }
 
-func (g *CallsGenerator) ballotVoite(voiter uint, addr common.Address, proposal int64) TxMaker {
-	payer := g.Payer(voiter)
+func (g *CallsGenerator) ballotCountOfVoites(voiter uint, contract common.Address) TxMaker {
+	payer := g.Payer(voiter, big.NewInt(100))
 	return func(client *ethclient.Client) (*types.Transaction, error) {
-		transactor, err := ballot.NewContractTransactor(addr, client)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		opts := &bind.FilterOpts{
+			Context: ctx,
+		}
+		filterer, err := ballot.NewContractFilterer(contract, client)
+		if err != nil {
+			panic(err)
+		}
+		logs, err := filterer.FilterVoiting(opts, []common.Address{contract, payer.From}, nil, nil)
+		if err != nil {
+			g.Log.Error("filterer.FilterVoiting()", "err", err)
+			return nil, nil
+		}
+		defer logs.Close()
+
+		var count int
+		for ; logs.Next(); count++ {
+		}
+		g.Log.Info("prev voites", "count", count)
+
+		return nil, nil
+	}
+}
+
+func (g *CallsGenerator) ballotVoite(voiter uint, contract common.Address, proposal int64) TxMaker {
+	payer := g.Payer(voiter, big.NewInt(100))
+	return func(client *ethclient.Client) (*types.Transaction, error) {
+		transactor, err := ballot.NewContractTransactor(contract, client)
 		if err != nil {
 			panic(err)
 		}
@@ -55,9 +87,9 @@ func (g *CallsGenerator) ballotVoite(voiter uint, addr common.Address, proposal 
 	}
 }
 
-func (g *CallsGenerator) ballotWinner(addr common.Address) TxMaker {
+func (g *CallsGenerator) ballotWinner(contract common.Address) TxMaker {
 	return func(client *ethclient.Client) (*types.Transaction, error) {
-		caller, err := ballot.NewContractCaller(addr, client)
+		caller, err := ballot.NewContractCaller(contract, client)
 		if err != nil {
 			panic(err)
 		}

@@ -38,15 +38,19 @@ contract Ballot {
         }
     }
 
+    event Voiting(address indexed who, uint indexed num, bytes32 indexed text, uint256 amount);
+
     /// Give your vote (including votes delegated to you)
     /// to proposal `proposals[proposal].name`.
-    function vote(uint proposal) public {
+    function vote(uint proposal) public payable {
         uint senderVote = voters[msg.sender].vote;
         if (senderVote > 0) {
             proposals[senderVote-1].voteCount -= 1;
         }
         voters[msg.sender].vote == proposal+1;
         proposals[proposal].voteCount += 1;
+
+	emit Voiting(msg.sender, proposal, proposals[proposal].name, msg.value);
     }
 
     /// @dev Computes the winning proposal taking all

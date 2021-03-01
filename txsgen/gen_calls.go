@@ -178,23 +178,28 @@ func (g *CallsGenerator) generate(position uint, state *genState) *Transaction {
 		dsc      string
 	)
 
-	a := position % uint(len(g.accs))
-
 	switch step := (position % 100001); {
 
 	case step == 0:
 		dsc = "ballot contract creation"
-		maker = g.ballotCreateContract(a)
+		maker = g.ballotCreateContract(0)
 		state.NotReady()
 		callback = func(r *types.Receipt, e error) {
 			state.BallotAddr = r.ContractAddress
 			state.Ready()
 		}
 
-	case 0 < step && step < 100000:
+	case 0 < step && step < 100000 && step%2 == 0:
+		a := (position / 2) % uint(len(g.accs))
 		chose := ballotRandChose()
 		dsc = fmt.Sprintf("%d voites for %d", a, chose)
 		maker = g.ballotVoite(a, state.BallotAddr, chose)
+		break
+
+	case 0 < step && step < 100000 && step%2 == 1:
+		a := (position / 2) % uint(len(g.accs))
+		dsc = fmt.Sprintf("count voite logs for %d", a)
+		maker = g.ballotCountOfVoites(a, state.BallotAddr)
 		break
 
 	case step == 100000:
