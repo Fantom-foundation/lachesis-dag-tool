@@ -6,12 +6,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Fantom-foundation/go-lachesis/evmcore"
+	"github.com/Fantom-foundation/go-lachesis/logger"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/Fantom-foundation/go-lachesis/evmcore"
-	"github.com/Fantom-foundation/go-lachesis/logger"
 )
 
 type Sender struct {
@@ -84,7 +84,21 @@ func (s *Sender) background() {
 	defer disconnect()
 
 	for {
+		// client connect
+		for client == nil {
+			client = s.connect()
+			sbscr = s.subscribe(client)
+			if sbscr == nil {
+				disconnect()
+			}
+			select {
+			case <-s.done:
+				return
+			case <-time.After(time.Second):
+			}
+		}
 
+		// input header
 		for tx == nil {
 			select {
 			case b := <-s.headers:
@@ -98,18 +112,7 @@ func (s *Sender) background() {
 			}
 		}
 
-		for client == nil {
-			client = s.connect()
-		}
-
-		if sbscr == nil {
-			sbscr = s.subscribe(client)
-			if sbscr == nil {
-				disconnect()
-				continue
-			}
-		}
-
+		// output tx
 		t, err := tx.Make(client)
 		var txHash common.Hash
 		if t != nil {
