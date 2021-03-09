@@ -113,8 +113,15 @@ func (s *Sender) background() {
 		}
 
 		// output tx
-		t, err := tx.Make(client)
-		var txHash common.Hash
+
+		var (
+			t      *types.Transaction
+			txHash common.Hash
+		)
+		err = try(func() error {
+			t, err = tx.Make(client)
+			return err
+		})
 		if t != nil {
 			txHash = t.Hash()
 		}
@@ -163,7 +170,14 @@ func (s *Sender) subscribe(client *ethclient.Client) ethereum.Subscription {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	sbscr, err := client.SubscribeNewHead(ctx, s.headers)
+	var (
+		sbscr ethereum.Subscription
+		err   error
+	)
+	try(func() error {
+		sbscr, err = client.SubscribeNewHead(ctx, s.headers)
+		return err
+	})
 	if err != nil {
 		s.Log.Error("subscribe to", "url", s.url, "err", err)
 		s.delay()
@@ -173,25 +187,33 @@ func (s *Sender) subscribe(client *ethclient.Client) ethereum.Subscription {
 	return sbscr
 }
 
-func (s *Sender) onNewHeader(client *ethclient.Client, h *types.Header) error {
+func (s *Sender) onNewHeader(client *ethclient.Client, h *types.Header) (err error) {
 	b := evmcore.ConvertFromEthHeader(h)
 	s.Log.Debug("new block", "number", b.Number, "block", b.Hash)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	txsCount, err := client.TransactionCount(ctx, b.Hash)
+	var txsCount uint
+	err = try(func() error {
+		txsCount, err = client.TransactionCount(ctx, b.Hash)
+		return err
+	})
 	if err != nil {
 		s.Log.Error("block txs", "number", b.Number, "block", b.Hash, "err", err)
-		return err
+		return
 	}
 	s.Log.Debug("block txs", "number", b.Number, "block", b.Hash, "count", txsCount)
 
 	for index := uint(0); index < txsCount; index++ {
-		tx, err := client.TransactionInBlock(ctx, b.Hash, index)
+		var tx *types.Transaction
+		err = try(func() error {
+			tx, err = client.TransactionInBlock(ctx, b.Hash, index)
+			return err
+		})
 		if err != nil {
 			s.Log.Error("tx of block", "number", b.Number, "block", b.Hash, "index", index, "err", err)
-			return err
+			return
 		}
 		txHash := tx.Hash()
 
@@ -200,7 +222,11 @@ func (s *Sender) onNewHeader(client *ethclient.Client, h *types.Header) error {
 			continue
 		}
 
-		r, err := client.TransactionReceipt(ctx, txHash)
+		var r *types.Receipt
+		err = try(func() error {
+			r, err = client.TransactionReceipt(ctx, txHash)
+			return err
+		})
 		if err != nil {
 			s.Log.Error("new receipt", "number", b.Number, "block", b.Hash, "index", index, "tx", txHash, "err", err)
 			return err
@@ -220,4 +246,15 @@ func (s *Sender) delay() {
 	case <-s.done:
 		return
 	}
+}
+
+func try(f func() error) (err error) {
+	defer func() {
+		if catch := recover(); catch != nil {
+			err = fmt.Errorf("client panic: %v", catch)
+		}
+	}()
+
+	err = f()
+	return
 }
