@@ -37,7 +37,7 @@ func init() {
 		cli.Command{
 			Action:      makeFakenetAccs,
 			Name:        "fakeaccs",
-			Usage:       "[offset=0 [count=1000]]",
+			Usage:       "[offset=1 [count=1000]]",
 			Description: `Generates <count> fakenet accounts starting from <offset>.`,
 		},
 		cli.Command{
@@ -87,7 +87,7 @@ func before(ctx *cli.Context) error {
 
 // makeFakenetAccs action.
 func makeFakenetAccs(ctx *cli.Context) error {
-	var accsOffset int
+	var accsOffset int = 1
 	if ctx.NArg() > 1 {
 		i64, err := strconv.ParseUint(ctx.Args().Get(1), 10, 64)
 		if err != nil {
