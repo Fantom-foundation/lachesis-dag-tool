@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"github.com/Fantom-foundation/go-lachesis/lachesis"
+	"github.com/ethereum/go-ethereum/common"
 	"gopkg.in/urfave/cli.v1"
 
 	"github.com/Fantom-foundation/lachesis-dag-tool/txsgen/utils/toml"
@@ -16,13 +17,9 @@ var ConfigFileFlag = cli.StringFlag{
 }
 
 type Config struct {
-	ChainId int64    // chain id for sign transactions
+	ChainId int64 // chain id for sign transactions
+	Payer   common.Address
 	URLs    []string // WS nodes API URL
-	Accs    struct {
-		Count  uint // count of predefined fake accounts
-		Offset uint // offset of predefined fake accounts
-	}
-	SendTrusted bool
 }
 
 func DefaultConfig() *Config {
@@ -31,14 +28,6 @@ func DefaultConfig() *Config {
 		URLs: []string{
 			"ws://127.0.0.1:4500",
 		},
-		Accs: struct {
-			Count  uint
-			Offset uint
-		}{
-			Count:  10000,
-			Offset: 1000,
-		},
-		SendTrusted: false,
 	}
 }
 

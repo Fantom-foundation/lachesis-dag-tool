@@ -111,6 +111,7 @@ func makeFakenetAccs(ctx *cli.Context) error {
 
 	for i := accsOffset; i < (accsOffset + accsCount); i++ {
 		key := crypto.FakeKey(i)
+		// addr := crypto.PubkeyToAddress(key.PublicKey)
 		_, err := keyStore.ImportECDSA(key, "")
 		if err != nil {
 			return err

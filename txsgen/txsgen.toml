@@ -1,11 +1,9 @@
 ChainId = 4003
 
+Payer = "0xf88d5892faf084dcf4143566d9c9b3f047c153ca"
+
 URLs = [
     "ws://127.0.0.1:4500",
     "ws://127.0.0.1:4500",
     "ws://127.0.0.1:4500",
 ]
-
-[Accs]
-    Count = 3
-    Offset = 1

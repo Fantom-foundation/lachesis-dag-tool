@@ -1,7 +1,8 @@
 # Lachesis DAG tool: txsgen
 
-Transactions and API-calls generator for stress and performance testing of lachesis fakenet.
-See `txsgen help`.
+Transactions and API-calls generator for stress and performance testing of lachesis net.
+It uses generated accounts. Command `./txsgen fakeaccs` generates fakenet accounts.
+See `txsgen help` for details.
 
 
 ## API-calls:
