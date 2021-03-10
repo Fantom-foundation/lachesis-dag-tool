@@ -88,16 +88,16 @@ func before(ctx *cli.Context) error {
 // makeFakenetAccs action.
 func makeFakenetAccs(ctx *cli.Context) error {
 	var accsOffset int = 1
-	if ctx.NArg() > 1 {
-		i64, err := strconv.ParseUint(ctx.Args().Get(1), 10, 64)
+	if ctx.NArg() > 0 {
+		i64, err := strconv.ParseUint(ctx.Args().Get(0), 10, 64)
 		if err != nil {
 			return err
 		}
 		accsOffset = int(i64)
 	}
 	var accsCount int = 1000
-	if ctx.NArg() > 2 {
-		i64, err := strconv.ParseUint(ctx.Args().Get(2), 10, 64)
+	if ctx.NArg() > 1 {
+		i64, err := strconv.ParseUint(ctx.Args().Get(1), 10, 64)
 		if err != nil {
 			return err
 		}
