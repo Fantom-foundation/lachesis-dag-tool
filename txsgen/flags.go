@@ -17,6 +17,12 @@ func getTxnsRate(ctx *cli.Context) uint {
 	return uint(ctx.GlobalInt(TxnsRateFlag.Name))
 }
 
+var KeyStoreDirFlag = cli.StringFlag{
+	Name:  "keystore",
+	Usage: "Directory for the keystore",
+	Value: "keystore",
+}
+
 var NumberFlag = cli.StringFlag{
 	Name:  "num",
 	Usage: "'N/X' - it is a N-th generator of X",

@@ -5,8 +5,10 @@ import (
 	"os"
 	"os/signal"
 	"sort"
+	"strconv"
 	"syscall"
 
+	"github.com/Fantom-foundation/go-lachesis/crypto"
 	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
@@ -33,6 +35,12 @@ func init() {
 
 	app.Commands = []cli.Command{
 		cli.Command{
+			Action:      makeFakenetAccs,
+			Name:        "fakeaccs",
+			Usage:       "[offset=0 [count=1000]]",
+			Description: `Generates <count> fakenet accounts starting from <offset>.`,
+		},
+		cli.Command{
 			Action:      generateCalls,
 			Name:        "calls",
 			Usage:       "Generates a lot of smart contract and web3-API calls.",
@@ -54,6 +62,7 @@ func init() {
 	sort.Sort(cli.CommandsByName(app.Commands))
 
 	app.Flags = append(app.Flags,
+		KeyStoreDirFlag,
 		ConfigFileFlag,
 		TxnsRateFlag,
 		utils.MetricsEnabledFlag,
@@ -78,6 +87,41 @@ func before(ctx *cli.Context) error {
 
 	SetupPrometheus(ctx)
 	mainCfg = OpenConfig(ctx)
+
+	return nil
+}
+
+// makeFakenetAccs action.
+func makeFakenetAccs(ctx *cli.Context) error {
+	var accsOffset int
+	if ctx.NArg() > 1 {
+		i64, err := strconv.ParseUint(ctx.Args().Get(1), 10, 64)
+		if err != nil {
+			return err
+		}
+		accsOffset = int(i64)
+	}
+	var accsCount int = 1000
+	if ctx.NArg() > 2 {
+		i64, err := strconv.ParseUint(ctx.Args().Get(2), 10, 64)
+		if err != nil {
+			return err
+		}
+		accsCount = int(i64)
+	}
+
+	keyStore, err := makeKeyStore(ctx)
+	if err != nil {
+		return err
+	}
+
+	for i := accsOffset; i < (accsOffset + accsCount); i++ {
+		key := crypto.FakeKey(i)
+		_, err := keyStore.ImportECDSA(key, "")
+		if err != nil {
+			return err
+		}
+	}
 
 	return nil
 }

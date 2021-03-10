@@ -3,17 +3,39 @@ package main
 import (
 	"crypto/ecdsa"
 	"math/big"
+	"os"
+	"path/filepath"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/Fantom-foundation/go-lachesis/crypto"
 	"github.com/Fantom-foundation/go-lachesis/lachesis/params"
+	"github.com/ethereum/go-ethereum/accounts/keystore"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
+	"gopkg.in/urfave/cli.v1"
 )
 
 var (
 	gasLimit = uint64(21000)
 	gasPrice = params.MinGasPrice // minimal
 )
+
+func makeKeyStore(ctx *cli.Context) (*keystore.KeyStore, error) {
+	keydir := ctx.GlobalString(KeyStoreDirFlag.Name)
+	keydir, err := filepath.Abs(keydir)
+	if err != nil {
+		return nil, err
+	}
+	err = os.MkdirAll(keydir, 0700)
+	if err != nil {
+		return nil, err
+	}
+
+	scryptN := keystore.StandardScryptN
+	scryptP := keystore.StandardScryptP
+	keyStore := keystore.NewKeyStore(keydir, scryptN, scryptP)
+
+	return keyStore, nil
+}
 
 type Acc struct {
 	Key  *ecdsa.PrivateKey
