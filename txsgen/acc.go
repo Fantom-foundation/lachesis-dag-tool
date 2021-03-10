@@ -30,9 +30,7 @@ func makeKeyStore(ctx *cli.Context) (*keystore.KeyStore, error) {
 		return nil, err
 	}
 
-	scryptN := keystore.StandardScryptN
-	scryptP := keystore.StandardScryptP
-	keyStore := keystore.NewKeyStore(keydir, scryptN, scryptP)
+	keyStore := keystore.NewPlaintextKeyStore(keydir)
 
 	return keyStore, nil
 }
