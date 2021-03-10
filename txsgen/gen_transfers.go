@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"math/big"
@@ -9,8 +10,10 @@ import (
 	"time"
 
 	"github.com/Fantom-foundation/go-lachesis/logger"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/ethclient"
 )
 
 type TransfersGenerator struct {
@@ -131,14 +134,15 @@ func (g *TransfersGenerator) Yield() *Transaction {
 }
 
 func (g *TransfersGenerator) generate(position uint) *Transaction {
+	accs := g.accs.Accounts()
+	count := uint(len(accs))
+
 	var (
 		maker    TxMaker
 		callback TxCallback
 		dsc      string
 	)
 
-	accs := g.accs.Accounts()
-	count := uint(len(accs))
 	from := accs[position%count]
 	to := accs[(position+1)%count]
 
@@ -154,23 +158,25 @@ func (g *TransfersGenerator) generate(position uint) *Transaction {
 	}
 }
 
-func (g *TransfersGenerator) Payer(n uint, amounts ...*big.Int) *bind.TransactOpts {
-	accs := g.accs.Accounts()
-	from := accs[n]
+func (g *TransfersGenerator) transferTx(from, to accounts.Account, nonce uint) TxMaker {
+	amount := big.NewInt(1e6)
 
-	t, err := bind.NewKeyStoreTransactor(g.accs, from)
+	tx := types.NewTransaction(
+		uint64(nonce),
+		to.Address,
+		amount,
+		gasLimit,
+		gasPrice,
+		[]byte{},
+	)
+
+	signed, err := g.accs.SignTx(from, tx, g.chainId)
 	if err != nil {
 		panic(err)
 	}
 
-	t.Value = big.NewInt(0)
-	for _, amount := range amounts {
-		t.Value.Add(t.Value, amount)
+	return func(client *ethclient.Client) (*types.Transaction, error) {
+		err := client.SendTransaction(context.Background(), signed)
+		return signed, err
 	}
-
-	return t
-}
-
-func (g *TransfersGenerator) ReadOnly() *bind.CallOpts {
-	return &bind.CallOpts{}
 }
