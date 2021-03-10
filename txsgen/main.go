@@ -149,7 +149,7 @@ func generateTransfers(ctx *cli.Context) error {
 
 	generator := NewTransfersGenerator(cfg, keyStore)
 	defer generator.Stop()
-	generator.SetName("TransfersGen-%d")
+	generator.SetName("TransfersGen")
 
 	err = generate(generator)
 	return err
@@ -163,7 +163,7 @@ func generate(generator Generator) error {
 	nodes := NewNodes(cfg, txs)
 	go func() {
 		for tps := range nodes.TPS() {
-			generator.SetTPS(tps + 50.0*float64(nodes.Count()))
+			generator.SetTPS(tps + 10.0*float64(nodes.Count()))
 		}
 	}()
 

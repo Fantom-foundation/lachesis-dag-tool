@@ -13,12 +13,12 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/log"
 )
 
 type CallsGenerator struct {
-	tps     uint32
-	chainId uint
-
+	tps            uint32
+	chainId        uint
 	accs           *keystore.KeyStore
 	position       uint
 	generatorState genState
@@ -137,11 +137,13 @@ func (g *CallsGenerator) Yield() *Transaction {
 }
 
 type genState struct {
-	ready      chan struct{}
-	BallotAddr common.Address
+	ready          chan struct{}
+	notReadyReason string
+	BallotAddr     common.Address
 }
 
-func (s *genState) NotReady() {
+func (s *genState) NotReady(reason string) {
+	s.notReadyReason = reason
 	s.ready = make(chan struct{})
 }
 
@@ -150,10 +152,13 @@ func (s *genState) IsReady(done <-chan struct{}) bool {
 		return true
 	}
 
+	log.Warn("Waiting", "reason", s.notReadyReason)
+
 	select {
 	case <-done:
 		return false
 	case <-s.ready:
+		s.ready = nil
 		return true
 	}
 }
@@ -177,7 +182,7 @@ func (g *CallsGenerator) generate(position uint, state *genState) *Transaction {
 	case step == 0:
 		dsc = "ballot contract creation"
 		maker = g.ballotCreateContract(0)
-		state.NotReady()
+		state.NotReady(dsc)
 		callback = func(r *types.Receipt, e error) {
 			state.BallotAddr = r.ContractAddress
 			state.Ready()

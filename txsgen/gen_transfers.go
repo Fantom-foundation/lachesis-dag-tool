@@ -12,6 +12,7 @@ import (
 	"github.com/Fantom-foundation/go-lachesis/logger"
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 )
@@ -19,9 +20,12 @@ import (
 type TransfersGenerator struct {
 	tps     uint32
 	chainId *big.Int
+	accs    []accounts.Account
+	ks      *keystore.KeyStore
+	payer   common.Address
 
-	accs     *keystore.KeyStore
-	position uint
+	position       uint
+	generatorState genState
 
 	work sync.WaitGroup
 	done chan struct{}
@@ -33,9 +37,24 @@ type TransfersGenerator struct {
 func NewTransfersGenerator(cfg *Config, ks *keystore.KeyStore) *TransfersGenerator {
 	g := &TransfersGenerator{
 		chainId: big.NewInt(cfg.ChainId),
-		accs:    ks,
+		accs:    ks.Accounts(),
+		ks:      ks,
 
 		Instance: logger.MakeInstance(),
+	}
+
+	var found bool
+	for i, acc := range g.accs {
+		if err := ks.Unlock(acc, ""); err != nil {
+			panic(err)
+		}
+		if !found && acc.Address == cfg.Payer {
+			g.accs[0], g.accs[i] = g.accs[i], g.accs[0]
+			found = true
+		}
+	}
+	if !found {
+		panic("payer not found in the keystore")
 	}
 
 	return g
@@ -126,41 +145,70 @@ func (g *TransfersGenerator) background(output chan<- *Transaction) {
 }
 
 func (g *TransfersGenerator) Yield() *Transaction {
-	tx := g.generate(g.position)
+	if !g.generatorState.IsReady(g.done) {
+		return nil
+	}
+	tx := g.generate(g.position, &g.generatorState)
 	g.Log.Info("generated tx", "position", g.position, "dsc", tx.Dsc)
 	g.position++
 
 	return tx
 }
 
-func (g *TransfersGenerator) generate(position uint) *Transaction {
-	accs := g.accs.Accounts()
-	count := uint(len(accs))
+func (g *TransfersGenerator) generate(position uint, state *genState) *Transaction {
+	count := uint(len(g.accs))
 
 	var (
-		maker    TxMaker
+		from     accounts.Account
+		to       accounts.Account
+		amount   *big.Int
+		nonce    uint
 		callback TxCallback
-		dsc      string
 	)
 
-	from := accs[position%count]
-	to := accs[(position+1)%count]
-
-	nonce := position / count
-
-	maker = g.transferTx(from, to, nonce)
-	dsc = fmt.Sprintf("%s --> %s", from.Address, to.Address)
+	switch {
+	case position < (count - 2):
+		from = g.accs[0]
+		to = g.accs[(position+1)%count]
+		amount = big.NewInt(1e18)
+		nonce = position
+	case position == (count - 2):
+		from = g.accs[0]
+		to = g.accs[(position+1)%count]
+		amount = big.NewInt(1e18)
+		nonce = position
+		state.NotReady("init transer cicle")
+		callback = func(r *types.Receipt, e error) {
+			if r != nil {
+				state.Ready()
+			}
+		}
+	default:
+		from = g.accs[position%count]
+		to = g.accs[(position+1)%count]
+		amount = big.NewInt(1e5)
+		nonce = position / count
+		if position%count == 0 {
+			nonce += (count - 1)
+		}
+		if position%count == (count - 2) {
+			state.NotReady("transer cicle")
+			callback = func(r *types.Receipt, e error) {
+				if r != nil {
+					state.Ready()
+				}
+			}
+		}
+	}
 
 	return &Transaction{
-		Make:     maker,
+		Make:     g.transferTx(from, to, amount, nonce),
+		Dsc:      fmt.Sprintf("%s --> %s", from.Address.String(), to.Address.String()),
 		Callback: callback,
-		Dsc:      dsc,
 	}
 }
 
-func (g *TransfersGenerator) transferTx(from, to accounts.Account, nonce uint) TxMaker {
-	amount := big.NewInt(1e6)
-
+func (g *TransfersGenerator) transferTx(from, to accounts.Account, amount *big.Int, nonce uint) TxMaker {
 	tx := types.NewTransaction(
 		uint64(nonce),
 		to.Address,
@@ -170,7 +218,7 @@ func (g *TransfersGenerator) transferTx(from, to accounts.Account, nonce uint) T
 		[]byte{},
 	)
 
-	signed, err := g.accs.SignTx(from, tx, g.chainId)
+	signed, err := g.ks.SignTx(from, tx, g.chainId)
 	if err != nil {
 		panic(err)
 	}
