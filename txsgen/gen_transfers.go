@@ -10,18 +10,15 @@ import (
 
 	"github.com/Fantom-foundation/go-lachesis/logger"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
-	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/accounts/keystore"
 )
 
 type TransfersGenerator struct {
 	tps     uint32
-	chainId uint
-	signer  types.Signer
+	chainId *big.Int
 
-	instances uint
-	accs      []*Acc
-	offset    uint
-	position  uint
+	accs     *keystore.KeyStore
+	position uint
 
 	work sync.WaitGroup
 	done chan struct{}
@@ -30,15 +27,10 @@ type TransfersGenerator struct {
 	logger.Instance
 }
 
-func NewTransfersGenerator(cfg *Config, num, ofTotal uint) *TransfersGenerator {
-	accs := cfg.Accs.Count / ofTotal
-	offset := cfg.Accs.Offset + accs*(num-1)
+func NewTransfersGenerator(cfg *Config, ks *keystore.KeyStore) *TransfersGenerator {
 	g := &TransfersGenerator{
-		chainId:   uint(cfg.ChainId),
-		signer:    types.NewEIP155Signer(big.NewInt(int64(cfg.ChainId))),
-		instances: ofTotal,
-		accs:      make([]*Acc, accs),
-		offset:    offset,
+		chainId: big.NewInt(cfg.ChainId),
+		accs:    ks,
 
 		Instance: logger.MakeInstance(),
 	}
@@ -59,7 +51,6 @@ func (g *TransfersGenerator) Start() (output chan *Transaction) {
 	g.work.Add(1)
 	go g.background(output)
 
-	g.Log.Info("will use", "accounts", len(g.accs), "from", g.offset, "to", uint(len(g.accs))+g.offset)
 	return
 }
 
@@ -82,7 +73,7 @@ func (g *TransfersGenerator) getTPS() float64 {
 }
 
 func (g *TransfersGenerator) SetTPS(tps float64) {
-	x := uint32(math.Ceil(tps / float64(g.instances)))
+	x := uint32(math.Ceil(tps))
 	atomic.StoreUint32(&g.tps, x)
 }
 
@@ -146,28 +137,15 @@ func (g *TransfersGenerator) generate(position uint) *Transaction {
 		dsc      string
 	)
 
-	count := uint(len(g.accs))
-	a := position % count
-	b := (position + 1) % count
-
-	from := g.accs[a]
-	if from == nil {
-		from = MakeAcc(a + g.offset)
-		g.accs[a] = from
-	}
-	a += g.offset
-
-	to := g.accs[b]
-	if to == nil {
-		to = MakeAcc(b + g.offset)
-		g.accs[b] = to
-	}
-	b += g.offset
+	accs := g.accs.Accounts()
+	count := uint(len(accs))
+	from := accs[position%count]
+	to := accs[(position+1)%count]
 
 	nonce := position / count
 
 	maker = g.transferTx(from, to, nonce)
-	dsc = fmt.Sprintf("%d-->%d", a, b)
+	dsc = fmt.Sprintf("%s --> %s", from.Address, to.Address)
 
 	return &Transaction{
 		Make:     maker,
@@ -177,13 +155,13 @@ func (g *TransfersGenerator) generate(position uint) *Transaction {
 }
 
 func (g *TransfersGenerator) Payer(n uint, amounts ...*big.Int) *bind.TransactOpts {
-	from := g.accs[n]
-	if from == nil {
-		from = MakeAcc(n + g.offset)
-		g.accs[n] = from
-	}
+	accs := g.accs.Accounts()
+	from := accs[n]
 
-	t := bind.NewKeyedTransactor(from.Key)
+	t, err := bind.NewKeyStoreTransactor(g.accs, from)
+	if err != nil {
+		panic(err)
+	}
 
 	t.Value = big.NewInt(0)
 	for _, amount := range amounts {

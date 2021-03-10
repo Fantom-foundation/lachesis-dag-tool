@@ -45,18 +45,12 @@ func init() {
 			Name:        "calls",
 			Usage:       "Generates a lot of smart contract and web3-API calls.",
 			Description: `Note: uses fakenet accounts and deploys a fake contract.`,
-			Flags: []cli.Flag{
-				NumberFlag,
-			},
 		},
 		cli.Command{
 			Action:      generateTransfers,
 			Name:        "transfers",
 			Usage:       "Generates a lot of transfer transactions.",
 			Description: `Note: uses fakenet accounts.`,
-			Flags: []cli.Flag{
-				NumberFlag,
-			},
 		},
 	}
 	sort.Sort(cli.CommandsByName(app.Commands))
@@ -129,26 +123,34 @@ func makeFakenetAccs(ctx *cli.Context) error {
 // generateCalls action.
 func generateCalls(ctx *cli.Context) error {
 	cfg := mainCfg
-	num, ofTotal := getNumber(ctx)
 
-	generator := NewCallsGenerator(cfg, num, ofTotal)
+	keyStore, err := makeKeyStore(ctx)
+	if err != nil {
+		return err
+	}
+
+	generator := NewCallsGenerator(cfg, keyStore)
 	defer generator.Stop()
-	generator.SetName(fmt.Sprintf("CallsGen-%d", num))
+	generator.SetName("CallsGen")
 
-	err := generate(generator)
+	err = generate(generator)
 	return err
 }
 
 // generateTransfers action.
 func generateTransfers(ctx *cli.Context) error {
 	cfg := mainCfg
-	num, ofTotal := getNumber(ctx)
 
-	generator := NewTransfersGenerator(cfg, num, ofTotal)
+	keyStore, err := makeKeyStore(ctx)
+	if err != nil {
+		return err
+	}
+
+	generator := NewTransfersGenerator(cfg, keyStore)
 	defer generator.Stop()
-	generator.SetName(fmt.Sprintf("TransfersGen-%d", num))
+	generator.SetName("TransfersGen-%d")
 
-	err := generate(generator)
+	err = generate(generator)
 	return err
 }
 

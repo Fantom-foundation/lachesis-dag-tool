@@ -1,10 +1,6 @@
 package main
 
 import (
-	"fmt"
-	"strconv"
-	"strings"
-
 	"gopkg.in/urfave/cli.v1"
 )
 
@@ -21,49 +17,6 @@ var KeyStoreDirFlag = cli.StringFlag{
 	Name:  "keystore",
 	Usage: "Directory for the keystore",
 	Value: "keystore",
-}
-
-var NumberFlag = cli.StringFlag{
-	Name:  "num",
-	Usage: "'N/X' - it is a N-th generator of X",
-	Value: "1/1",
-}
-
-func getNumber(ctx *cli.Context) (num, total uint) {
-	var err error
-	num, total, err = parseNumber(ctx.String(NumberFlag.Name))
-	if err != nil {
-		panic(err)
-	}
-	return
-}
-
-func parseNumber(s string) (num, total uint, err error) {
-	var i64 uint64
-
-	parts := strings.Split(s, "/")
-	if len(parts) != 2 {
-		err = fmt.Errorf("use %%d/%%d format")
-		return
-	}
-
-	i64, err = strconv.ParseUint(parts[0], 10, 64)
-	if err != nil {
-		return
-	}
-	num = uint(i64)
-
-	i64, err = strconv.ParseUint(parts[1], 10, 64)
-	if err != nil {
-		return
-	}
-	total = uint(i64)
-
-	if 1 > num || num > total {
-		err = fmt.Errorf("key-num should be in range from 1 to total : <key-num>/<total>")
-	}
-
-	return
 }
 
 var VerbosityFlag = cli.IntFlag{
