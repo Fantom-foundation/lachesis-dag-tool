@@ -209,22 +209,28 @@ func (g *TransfersGenerator) generate(position uint, state *genState) *Transacti
 }
 
 func (g *TransfersGenerator) transferTx(from, to accounts.Account, amount *big.Int, nonce uint) TxMaker {
-	tx := types.NewTransaction(
-		uint64(nonce),
-		to.Address,
-		amount,
-		gasLimit,
-		gasPrice,
-		[]byte{},
-	)
-
-	signed, err := g.ks.SignTx(from, tx, g.chainId)
-	if err != nil {
-		panic(err)
-	}
-
 	return func(client *ethclient.Client) (*types.Transaction, error) {
-		err := client.SendTransaction(context.Background(), signed)
+		// TODO: get nonce once at start
+		nonce1, err := client.PendingNonceAt(context.Background(), from.Address)
+		if err != nil {
+			return nil, err
+		}
+
+		tx := types.NewTransaction(
+			uint64(nonce1),
+			to.Address,
+			amount,
+			gasLimit,
+			gasPrice,
+			[]byte{},
+		)
+
+		signed, err := g.ks.SignTx(from, tx, g.chainId)
+		if err != nil {
+			panic(err)
+		}
+
+		err = client.SendTransaction(context.Background(), signed)
 		return signed, err
 	}
 }

@@ -113,7 +113,6 @@ func (s *Sender) background() {
 		}
 
 		// output tx
-
 		var (
 			t      *types.Transaction
 			txHash common.Hash
