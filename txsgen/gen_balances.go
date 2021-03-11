@@ -16,10 +16,12 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
-type TransfersGenerator struct {
+type BalancesGenerator struct {
 	tps     uint32
 	chainId *big.Int
 	ks      *keystore.KeyStore
+	amount  *big.Int
+	payer   accounts.Account
 	accs    []accounts.Account
 
 	position       uint
@@ -32,28 +34,36 @@ type TransfersGenerator struct {
 	logger.Instance
 }
 
-func NewTransfersGenerator(cfg *Config, ks *keystore.KeyStore) *TransfersGenerator {
-	g := &TransfersGenerator{
+func NewBalancesGenerator(cfg *Config, ks *keystore.KeyStore, amount int64) *BalancesGenerator {
+	g := &BalancesGenerator{
 		chainId: big.NewInt(cfg.ChainId),
 		ks:      ks,
+		amount:  big.NewInt(amount),
 
 		Instance: logger.MakeInstance(),
 	}
 
+	var found bool
 	for _, acc := range ks.Accounts() {
-		if acc.Address == cfg.Payer {
-			continue
-		}
 		if err := ks.Unlock(acc, ""); err != nil {
 			panic(err)
 		}
-		g.accs = append(g.accs, acc)
+
+		if acc.Address == cfg.Payer {
+			g.payer = acc
+			found = true
+		} else {
+			g.accs = append(g.accs, acc)
+		}
+	}
+	if !found {
+		panic("payer not found in the keystore")
 	}
 
 	return g
 }
 
-func (g *TransfersGenerator) Start() (output chan *Transaction) {
+func (g *BalancesGenerator) Start() (output chan *Transaction) {
 	g.Lock()
 	defer g.Unlock()
 
@@ -69,7 +79,7 @@ func (g *TransfersGenerator) Start() (output chan *Transaction) {
 	return
 }
 
-func (g *TransfersGenerator) Stop() {
+func (g *BalancesGenerator) Stop() {
 	g.Lock()
 	defer g.Unlock()
 
@@ -82,17 +92,17 @@ func (g *TransfersGenerator) Stop() {
 	g.done = nil
 }
 
-func (g *TransfersGenerator) getTPS() float64 {
+func (g *BalancesGenerator) getTPS() float64 {
 	tps := atomic.LoadUint32(&g.tps)
 	return float64(tps)
 }
 
-func (g *TransfersGenerator) SetTPS(tps float64) {
+func (g *BalancesGenerator) SetTPS(tps float64) {
 	x := uint32(math.Ceil(tps))
 	atomic.StoreUint32(&g.tps, x)
 }
 
-func (g *TransfersGenerator) background(output chan<- *Transaction) {
+func (g *BalancesGenerator) background(output chan<- *Transaction) {
 	defer g.work.Done()
 	defer close(output)
 
@@ -110,6 +120,9 @@ func (g *TransfersGenerator) background(output chan<- *Transaction) {
 		for count := tps; count > 0; count-- {
 			begin := time.Now()
 			tx := g.Yield()
+			if tx == nil {
+				return
+			}
 			generating += time.Since(begin)
 
 			begin = time.Now()
@@ -137,61 +150,45 @@ func (g *TransfersGenerator) background(output chan<- *Transaction) {
 	}
 }
 
-func (g *TransfersGenerator) Yield() *Transaction {
+func (g *BalancesGenerator) Yield() *Transaction {
 	if !g.generatorState.IsReady(g.done) {
 		return nil
 	}
 	tx := g.generate(g.position, &g.generatorState)
+	if tx == nil {
+		return nil
+	}
 	g.Log.Info("generated tx", "position", g.position, "dsc", tx.Dsc)
 	g.position++
 
 	return tx
 }
 
-func (g *TransfersGenerator) generate(position uint, state *genState) *Transaction {
+func (g *BalancesGenerator) generate(position uint, state *genState) *Transaction {
 	count := uint(len(g.accs))
 
-	var (
-		from     accounts.Account
-		to       accounts.Account
-		amount   *big.Int
-		nonce    uint
-		callback TxCallback
-	)
+	if position >= count {
+		return nil
+	}
 
-	from = g.accs[position%count]
-	to = g.accs[(position+1)%count]
-	amount = big.NewInt(1e5)
-	nonce = position / count
-
-	/*
-		if position%count == (count - 1) {
-			state.NotReady("transer cicle")
-			callback = func(r *types.Receipt, e error) {
-				if r != nil {
-					state.Ready()
-				}
-			}
-		}
-	*/
+	from := g.payer
+	to := g.accs[position%count]
 
 	return &Transaction{
-		Make:     g.transferTx(from, to, amount, nonce),
-		Dsc:      fmt.Sprintf("%s --> %s", from.Address.String(), to.Address.String()),
-		Callback: callback,
+		Make: g.transferTx(from, to, g.amount),
+		Dsc:  fmt.Sprintf("%s --> %s", from.Address.String(), to.Address.String()),
 	}
 }
 
-func (g *TransfersGenerator) transferTx(from, to accounts.Account, amount *big.Int, nonce uint) TxMaker {
+func (g *BalancesGenerator) transferTx(from, to accounts.Account, amount *big.Int) TxMaker {
 	return func(client *ethclient.Client) (*types.Transaction, error) {
-		// TODO: get nonce once at start
-		nonce1, err := client.PendingNonceAt(context.Background(), from.Address)
+		nonce, err := client.PendingNonceAt(context.Background(), from.Address)
 		if err != nil {
 			return nil, err
 		}
 
 		tx := types.NewTransaction(
-			uint64(nonce1),
+			uint64(nonce),
 			to.Address,
 			amount,
 			gasLimit,

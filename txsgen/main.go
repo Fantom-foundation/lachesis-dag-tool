@@ -38,19 +38,23 @@ func init() {
 			Action:      makeFakenetAccs,
 			Name:        "fakeaccs",
 			Usage:       "[offset=1 [count=1000]]",
-			Description: `Generates <count> fakenet accounts starting from <offset>.`,
+			Description: `Generates <count> fakenet accounts starting from <offset> and saves them in the keystore dir.`,
+		},
+		cli.Command{
+			Action:      initAccsBalances,
+			Name:        "initbalance",
+			Usage:       "[amount=1]",
+			Description: `Pays <amount> from config.Payer to each other account in the keystore dir.`,
 		},
 		cli.Command{
 			Action:      generateCalls,
 			Name:        "calls",
-			Usage:       "Generates a lot of smart contract and web3-API calls.",
-			Description: `Note: uses fakenet accounts and deploys a fake contract.`,
+			Description: `Deploys a fake Contract and generates a lot of calls behalf of accounts in the keystore dir (except config.Payer).`,
 		},
 		cli.Command{
 			Action:      generateTransfers,
 			Name:        "transfers",
-			Usage:       "Generates a lot of transfer transactions.",
-			Description: `Note: uses fakenet accounts.`,
+			Description: `Generates a lot of transfer txs between accounts in the keystore dir (except config.Payer).`,
 		},
 	}
 	sort.Sort(cli.CommandsByName(app.Commands))
@@ -121,19 +125,39 @@ func makeFakenetAccs(ctx *cli.Context) error {
 	return nil
 }
 
+// initAccsBalances action.
+func initAccsBalances(ctx *cli.Context) error {
+	cfg := mainCfg
+	keyStore, err := makeKeyStore(ctx)
+	if err != nil {
+		return err
+	}
+
+	var amount int64 = 1e18
+	if ctx.NArg() > 0 {
+		i64, err := strconv.ParseUint(ctx.Args().Get(0), 10, 64)
+		if err != nil {
+			return err
+		}
+		amount = int64(i64)
+	}
+
+	generator := NewBalancesGenerator(cfg, keyStore, amount)
+	generator.SetName("InitBalance")
+	err = generate(generator)
+	return err
+}
+
 // generateCalls action.
 func generateCalls(ctx *cli.Context) error {
 	cfg := mainCfg
-
 	keyStore, err := makeKeyStore(ctx)
 	if err != nil {
 		return err
 	}
 
 	generator := NewCallsGenerator(cfg, keyStore)
-	defer generator.Stop()
 	generator.SetName("CallsGen")
-
 	err = generate(generator)
 	return err
 }
@@ -141,16 +165,13 @@ func generateCalls(ctx *cli.Context) error {
 // generateTransfers action.
 func generateTransfers(ctx *cli.Context) error {
 	cfg := mainCfg
-
 	keyStore, err := makeKeyStore(ctx)
 	if err != nil {
 		return err
 	}
 
 	generator := NewTransfersGenerator(cfg, keyStore)
-	defer generator.Stop()
 	generator.SetName("TransfersGen")
-
 	err = generate(generator)
 	return err
 }
@@ -159,6 +180,7 @@ func generateTransfers(ctx *cli.Context) error {
 func generate(generator Generator) error {
 	cfg := mainCfg
 	txs := generator.Start()
+	defer generator.Stop()
 
 	nodes := NewNodes(cfg, txs)
 	go func() {
@@ -167,12 +189,17 @@ func generate(generator Generator) error {
 		}
 	}()
 
-	waitForSignal()
+	waitForFinish(nodes.Done)
 	return nil
 }
 
-func waitForSignal() {
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
-	<-sigs
+func waitForFinish(done <-chan struct{}) {
+	term := make(chan os.Signal, 1)
+	signal.Notify(term, os.Interrupt, syscall.SIGTERM)
+	select {
+	case <-term:
+		break
+	case <-done:
+		break
+	}
 }

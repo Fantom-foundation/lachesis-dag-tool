@@ -15,7 +15,7 @@ type Nodes struct {
 	tps      chan float64
 	receipts chan int64
 	conns    []*Sender
-	done     chan struct{}
+	Done     chan struct{}
 	cfg      *Config
 	logger.Instance
 }
@@ -24,7 +24,7 @@ func NewNodes(cfg *Config, input <-chan *Transaction) *Nodes {
 	n := &Nodes{
 		tps:      make(chan float64, 1),
 		receipts: make(chan int64, 10),
-		done:     make(chan struct{}),
+		Done:     make(chan struct{}),
 		cfg:      cfg,
 		Instance: logger.MakeInstance(),
 	}
@@ -87,6 +87,8 @@ func (n *Nodes) add(url string) {
 }
 
 func (n *Nodes) background(input <-chan *Transaction) {
+	defer close(n.Done)
+
 	if len(n.conns) < 1 {
 		panic("no connections")
 	}
