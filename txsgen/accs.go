@@ -29,3 +29,14 @@ func makeKeyStore(ctx *cli.Context) (*keystore.KeyStore, error) {
 
 	return keyStore, nil
 }
+
+func openKeyStore(keydir string) (*keystore.KeyStore, error) {
+	keydir, err := filepath.Abs(keydir)
+	if err != nil {
+		return nil, err
+	}
+
+	keyStore := keystore.NewKeyStore(keydir, keystore.StandardScryptN, keystore.StandardScryptP)
+
+	return keyStore, nil
+}

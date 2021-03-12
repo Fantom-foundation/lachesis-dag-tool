@@ -9,7 +9,9 @@ import (
 	"syscall"
 
 	"github.com/Fantom-foundation/go-lachesis/crypto"
+	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/cmd/utils"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"gopkg.in/urfave/cli.v1"
@@ -34,6 +36,13 @@ func init() {
 	app.Version = params.VersionWithCommit(gitCommit, gitDate)
 
 	app.Commands = []cli.Command{
+		cli.Command{
+			Action:      importAcc,
+			Name:        "importacc",
+			Usage:       "<address> <encrypted keystore dir> [password]",
+			Description: `Decripts and imports account by <address> from <encrypted keystore dir> into the keystore dir.`,
+		},
+
 		cli.Command{
 			Action:      makeFakenetAccs,
 			Name:        "fakeaccs",
@@ -85,6 +94,43 @@ func before(ctx *cli.Context) error {
 
 	SetupPrometheus(ctx)
 	mainCfg = OpenConfig(ctx)
+
+	return nil
+}
+
+// importAcc action.
+func importAcc(ctx *cli.Context) error {
+	if ctx.NArg() < 2 {
+		return fmt.Errorf("Address and Keystore dir args expected")
+	}
+
+	acc := accounts.Account{
+		Address: common.HexToAddress(ctx.Args().Get(0)),
+	}
+	other, err := openKeyStore(ctx.Args().Get(1))
+	if err != nil {
+		return err
+	}
+
+	var password string
+	if ctx.NArg() > 2 {
+		password = ctx.Args().Get(2)
+	}
+
+	my, err := makeKeyStore(ctx)
+	if err != nil {
+		return err
+	}
+
+	decrypted, err := other.Export(acc, password, "")
+	if err != nil {
+		return err
+	}
+
+	_, err = my.Import(decrypted, "", "")
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
