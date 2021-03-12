@@ -128,6 +128,7 @@ func makeFakenetAccs(ctx *cli.Context) error {
 // initAccsBalances action.
 func initAccsBalances(ctx *cli.Context) error {
 	cfg := mainCfg
+	cfg.URLs = cfg.URLs[:1] // txs from single payer should be sent by single sender
 	keyStore, err := makeKeyStore(ctx)
 	if err != nil {
 		return err
