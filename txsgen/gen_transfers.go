@@ -21,6 +21,7 @@ type TransfersGenerator struct {
 	chainId *big.Int
 	ks      *keystore.KeyStore
 	accs    []accounts.Account
+	nonces  []uint64
 
 	position       uint
 	generatorState genState
@@ -49,6 +50,8 @@ func NewTransfersGenerator(cfg *Config, ks *keystore.KeyStore) *TransfersGenerat
 		}
 		g.accs = append(g.accs, acc)
 	}
+
+	g.nonces = make([]uint64, len(g.accs))
 
 	return g
 }
@@ -155,43 +158,33 @@ func (g *TransfersGenerator) generate(position uint, state *genState) *Transacti
 		from     accounts.Account
 		to       accounts.Account
 		amount   *big.Int
-		nonce    uint
 		callback TxCallback
 	)
 
 	from = g.accs[position%count]
 	to = g.accs[(position+1)%count]
 	amount = big.NewInt(1e5)
-	nonce = position / count
-
-	/*
-		if position%count == (count - 1) {
-			state.NotReady("transer cicle")
-			callback = func(r *types.Receipt, e error) {
-				if r != nil {
-					state.Ready()
-				}
-			}
-		}
-	*/
 
 	return &Transaction{
-		Make:     g.transferTx(from, to, amount, nonce),
+		Make:     g.transferTx(from, to, amount, position < count, g.nonces[position%count:]),
 		Dsc:      fmt.Sprintf("%s --> %s", from.Address.String(), to.Address.String()),
 		Callback: callback,
 	}
 }
 
-func (g *TransfersGenerator) transferTx(from, to accounts.Account, amount *big.Int, nonce uint) TxMaker {
-	return func(client *ethclient.Client) (*types.Transaction, error) {
-		// TODO: get nonce once at start
-		nonce1, err := client.PendingNonceAt(context.Background(), from.Address)
-		if err != nil {
-			return nil, err
+func (g *TransfersGenerator) transferTx(from, to accounts.Account, amount *big.Int, askNonce bool, cache []uint64) TxMaker {
+	return func(client *ethclient.Client) (tx *types.Transaction, err error) {
+		nonce := cache[0]
+		if askNonce {
+			nonce, err = client.PendingNonceAt(context.Background(), from.Address)
+			if err != nil {
+				return
+			}
 		}
+		cache[0] = nonce + 1
 
-		tx := types.NewTransaction(
-			uint64(nonce1),
+		tx = types.NewTransaction(
+			nonce,
 			to.Address,
 			amount,
 			gasLimit,
@@ -199,12 +192,12 @@ func (g *TransfersGenerator) transferTx(from, to accounts.Account, amount *big.I
 			[]byte{},
 		)
 
-		signed, err := g.ks.SignTx(from, tx, g.chainId)
+		tx, err = g.ks.SignTx(from, tx, g.chainId)
 		if err != nil {
 			panic(err)
 		}
 
-		err = client.SendTransaction(context.Background(), signed)
-		return signed, err
+		err = client.SendTransaction(context.Background(), tx)
+		return
 	}
 }
