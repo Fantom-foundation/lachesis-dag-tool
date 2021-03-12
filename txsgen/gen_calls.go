@@ -13,7 +13,6 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/log"
 )
 
 type CallsGenerator struct {
@@ -136,37 +135,6 @@ func (g *CallsGenerator) Yield() *Transaction {
 	return tx
 }
 
-type genState struct {
-	ready          chan struct{}
-	notReadyReason string
-	BallotAddr     common.Address
-}
-
-func (s *genState) NotReady(reason string) {
-	s.notReadyReason = reason
-	s.ready = make(chan struct{})
-}
-
-func (s *genState) IsReady(done <-chan struct{}) bool {
-	if s.ready == nil {
-		return true
-	}
-
-	log.Warn("Waiting", "reason", s.notReadyReason)
-
-	select {
-	case <-done:
-		return false
-	case <-s.ready:
-		s.ready = nil
-		return true
-	}
-}
-
-func (s *genState) Ready() {
-	close(s.ready)
-}
-
 func (g *CallsGenerator) generate(position uint, state *genState) *Transaction {
 	accs := g.accs.Accounts()
 	count := uint(len(accs))
@@ -177,6 +145,8 @@ func (g *CallsGenerator) generate(position uint, state *genState) *Transaction {
 		dsc      string
 	)
 
+	ballotAddr := *state.Session.(*common.Address)
+
 	switch step := (position % 100001); {
 
 	case step == 0:
@@ -184,7 +154,7 @@ func (g *CallsGenerator) generate(position uint, state *genState) *Transaction {
 		maker = g.ballotCreateContract(0)
 		state.NotReady(dsc)
 		callback = func(r *types.Receipt, e error) {
-			state.BallotAddr = r.ContractAddress
+			state.Session = &r.ContractAddress
 			state.Ready()
 		}
 
@@ -192,18 +162,18 @@ func (g *CallsGenerator) generate(position uint, state *genState) *Transaction {
 		a := (position / 2) % count
 		chose := ballotRandChose()
 		dsc = fmt.Sprintf("%d voites for %d", a, chose)
-		maker = g.ballotVoite(a, state.BallotAddr, chose)
+		maker = g.ballotVoite(a, ballotAddr, chose)
 		break
 
 	case 0 < step && step < 100000 && step%2 == 1:
 		a := (position / 2) % count
 		dsc = fmt.Sprintf("count voite logs for %d", a)
-		maker = g.ballotCountOfVoites(a, state.BallotAddr)
+		maker = g.ballotCountOfVoites(a, ballotAddr)
 		break
 
 	case step == 100000:
 		dsc = "ballot winner reading"
-		maker = g.ballotWinner(state.BallotAddr)
+		maker = g.ballotWinner(ballotAddr)
 
 	default:
 		panic(fmt.Sprintf("unknown step %d", step))
