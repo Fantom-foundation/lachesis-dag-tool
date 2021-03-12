@@ -165,16 +165,18 @@ func (g *TransfersGenerator) generate(position uint, state *genState) *Transacti
 	to = g.accs[(position+1)%count]
 	amount = big.NewInt(1e5)
 
-	// wait every transer cicle
-	if position%count == (count - 1) {
+	// wait every N
+	if position%500 == 0 {
 		state.NotReady("transer cicle")
 		callback = func(r *types.Receipt, e error) {
 			state.Ready()
 		}
 	}
 
+	askNonce := true // (position < count)
+
 	return &Transaction{
-		Make:     g.transferTx(from, to, amount, position < count, g.nonces[position%count:]),
+		Make:     g.transferTx(from, to, amount, askNonce, g.nonces[position%count:]),
 		Dsc:      fmt.Sprintf("%s --> %s", from.Address.String(), to.Address.String()),
 		Callback: callback,
 	}

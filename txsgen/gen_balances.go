@@ -174,9 +174,22 @@ func (g *BalancesGenerator) generate(position uint, state *genState) *Transactio
 	from := g.payer
 	to := g.accs[position%count]
 
+	// wait every N
+	var callback TxCallback
+	if position%500 == 0 {
+		state.NotReady("wait for init tx")
+		callback = func(r *types.Receipt, e error) {
+			if e != nil {
+				panic(e)
+			}
+			state.Ready()
+		}
+	}
+
 	return &Transaction{
-		Make: g.transferTx(from, to, g.amount),
-		Dsc:  fmt.Sprintf("%s --> %s", from.Address.String(), to.Address.String()),
+		Make:     g.transferTx(from, to, g.amount),
+		Dsc:      fmt.Sprintf("%s --> %s", from.Address.String(), to.Address.String()),
+		Callback: callback,
 	}
 }
 
