@@ -15,7 +15,7 @@ type Transaction struct {
 }
 
 type Generator interface {
-	Start() (output chan *Transaction)
+	Start() (output <-chan *Transaction)
 	Stop()
 	SetTPS(tps float64)
 }

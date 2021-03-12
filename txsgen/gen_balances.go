@@ -63,20 +63,20 @@ func NewBalancesGenerator(cfg *Config, ks *keystore.KeyStore, amount int64) *Bal
 	return g
 }
 
-func (g *BalancesGenerator) Start() (output chan *Transaction) {
+func (g *BalancesGenerator) Start() <-chan *Transaction {
 	g.Lock()
 	defer g.Unlock()
 
 	if g.done != nil {
-		return
+		return nil
 	}
 	g.done = make(chan struct{})
 
-	output = make(chan *Transaction, 100)
+	output := make(chan *Transaction, 100)
 	g.work.Add(1)
 	go g.background(output)
 
-	return
+	return output
 }
 
 func (g *BalancesGenerator) Stop() {

@@ -53,20 +53,20 @@ func NewTransfersGenerator(cfg *Config, ks *keystore.KeyStore) *TransfersGenerat
 	return g
 }
 
-func (g *TransfersGenerator) Start() (output chan *Transaction) {
+func (g *TransfersGenerator) Start() <-chan *Transaction {
 	g.Lock()
 	defer g.Unlock()
 
 	if g.done != nil {
-		return
+		return nil
 	}
 	g.done = make(chan struct{})
 
-	output = make(chan *Transaction, 100)
+	output := make(chan *Transaction, 100)
 	g.work.Add(1)
 	go g.background(output)
 
-	return
+	return output
 }
 
 func (g *TransfersGenerator) Stop() {
