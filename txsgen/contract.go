@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Fantom-foundation/go-lachesis/hash"
+	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -34,7 +35,7 @@ func ballotRandChose() int64 {
 	return rand.Int63n(int64(len(ballotOptions)))
 }
 
-func (g *CallsGenerator) ballotCreateContract(admin uint) TxMaker {
+func (g *CallsGenerator) ballotCreateContract(admin accounts.Account) TxMaker {
 	payer := g.Payer(admin)
 	return func(client *ethclient.Client) (*types.Transaction, error) {
 		_, tx, _, err := ballot.DeployContract(payer, client, ballotOptions)
@@ -46,7 +47,7 @@ func (g *CallsGenerator) ballotCreateContract(admin uint) TxMaker {
 	}
 }
 
-func (g *CallsGenerator) ballotCountOfVoites(voiter uint, contract common.Address) TxMaker {
+func (g *CallsGenerator) ballotCountOfVoites(voiter accounts.Account, contract common.Address) TxMaker {
 	payer := g.Payer(voiter, big.NewInt(100))
 	return func(client *ethclient.Client) (*types.Transaction, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -75,7 +76,7 @@ func (g *CallsGenerator) ballotCountOfVoites(voiter uint, contract common.Addres
 	}
 }
 
-func (g *CallsGenerator) ballotVoite(voiter uint, contract common.Address, proposal int64) TxMaker {
+func (g *CallsGenerator) ballotVoite(voiter accounts.Account, contract common.Address, proposal int64) TxMaker {
 	payer := g.Payer(voiter, big.NewInt(100))
 	return func(client *ethclient.Client) (*types.Transaction, error) {
 		transactor, err := ballot.NewContractTransactor(contract, client)

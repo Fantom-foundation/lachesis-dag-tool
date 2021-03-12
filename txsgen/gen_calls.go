@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Fantom-foundation/go-lachesis/logger"
+	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/common"
@@ -16,9 +17,11 @@ import (
 )
 
 type CallsGenerator struct {
-	tps            uint32
-	chainId        uint
-	accs           *keystore.KeyStore
+	tps     uint32
+	chainId uint
+	ks      *keystore.KeyStore
+	accs    []accounts.Account
+
 	position       uint
 	generatorState genState
 
@@ -32,9 +35,19 @@ type CallsGenerator struct {
 func NewCallsGenerator(cfg *Config, ks *keystore.KeyStore) *CallsGenerator {
 	g := &CallsGenerator{
 		chainId: uint(cfg.ChainId),
-		accs:    ks,
+		ks:      ks,
 
 		Instance: logger.MakeInstance(),
+	}
+
+	for _, acc := range ks.Accounts() {
+		if acc.Address == cfg.Payer {
+			continue
+		}
+		if err := ks.Unlock(acc, ""); err != nil {
+			panic(err)
+		}
+		g.accs = append(g.accs, acc)
 	}
 
 	return g
@@ -136,22 +149,20 @@ func (g *CallsGenerator) Yield() *Transaction {
 }
 
 func (g *CallsGenerator) generate(position uint, state *genState) *Transaction {
-	accs := g.accs.Accounts()
-	count := uint(len(accs))
-
+	count := uint(len(g.accs))
+	ballotAddr, _ := state.Session.(*common.Address)
 	var (
 		maker    TxMaker
 		callback TxCallback
 		dsc      string
 	)
 
-	ballotAddr := *state.Session.(*common.Address)
-
 	switch step := (position % 100001); {
 
 	case step == 0:
 		dsc = "ballot contract creation"
-		maker = g.ballotCreateContract(0)
+		acc := g.accs[position%count]
+		maker = g.ballotCreateContract(acc)
 		state.NotReady(dsc)
 		callback = func(r *types.Receipt, e error) {
 			state.Session = &r.ContractAddress
@@ -159,21 +170,21 @@ func (g *CallsGenerator) generate(position uint, state *genState) *Transaction {
 		}
 
 	case 0 < step && step < 100000 && step%2 == 0:
-		a := (position / 2) % count
+		acc := g.accs[(position/2)%count]
 		chose := ballotRandChose()
-		dsc = fmt.Sprintf("%d voites for %d", a, chose)
-		maker = g.ballotVoite(a, ballotAddr, chose)
+		dsc = fmt.Sprintf("%s voites for %d", acc.Address.String(), chose)
+		maker = g.ballotVoite(acc, *ballotAddr, chose)
 		break
 
 	case 0 < step && step < 100000 && step%2 == 1:
-		a := (position / 2) % count
-		dsc = fmt.Sprintf("count voite logs for %d", a)
-		maker = g.ballotCountOfVoites(a, ballotAddr)
+		acc := g.accs[(position/2)%count]
+		dsc = fmt.Sprintf("count voite logs of %s", acc.Address.String())
+		maker = g.ballotCountOfVoites(acc, *ballotAddr)
 		break
 
 	case step == 100000:
 		dsc = "ballot winner reading"
-		maker = g.ballotWinner(ballotAddr)
+		maker = g.ballotWinner(*ballotAddr)
 
 	default:
 		panic(fmt.Sprintf("unknown step %d", step))
@@ -186,11 +197,8 @@ func (g *CallsGenerator) generate(position uint, state *genState) *Transaction {
 	}
 }
 
-func (g *CallsGenerator) Payer(n uint, amounts ...*big.Int) *bind.TransactOpts {
-	accs := g.accs.Accounts()
-	from := accs[n]
-
-	t, err := bind.NewKeyStoreTransactor(g.accs, from)
+func (g *CallsGenerator) Payer(from accounts.Account, amounts ...*big.Int) *bind.TransactOpts {
+	t, err := bind.NewKeyStoreTransactor(g.ks, from)
 	if err != nil {
 		panic(err)
 	}
