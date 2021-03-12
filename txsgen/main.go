@@ -5,9 +5,13 @@ import (
 	"os"
 	"os/signal"
 	"sort"
+	"strconv"
 	"syscall"
 
+	"github.com/Fantom-foundation/go-lachesis/crypto"
+	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/cmd/utils"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"gopkg.in/urfave/cli.v1"
@@ -33,27 +37,39 @@ func init() {
 
 	app.Commands = []cli.Command{
 		cli.Command{
+			Action:      importAcc,
+			Name:        "importacc",
+			Usage:       "<address> <encrypted keystore dir> [password]",
+			Description: `Decripts and imports account by <address> from <encrypted keystore dir> into the keystore dir.`,
+		},
+
+		cli.Command{
+			Action:      makeFakenetAccs,
+			Name:        "fakeaccs",
+			Usage:       "[offset=1 [count=1000]]",
+			Description: `Generates <count> fakenet accounts starting from <offset> and saves them in the keystore dir.`,
+		},
+		cli.Command{
+			Action:      initAccsBalances,
+			Name:        "initbalance",
+			Usage:       "[amount=1]",
+			Description: `Pays <amount> from config.Payer to each other account in the keystore dir.`,
+		},
+		cli.Command{
 			Action:      generateCalls,
 			Name:        "calls",
-			Usage:       "Generates a lot of smart contract and web3-API calls.",
-			Description: `Note: uses fakenet accounts and deploys a fake contract.`,
-			Flags: []cli.Flag{
-				NumberFlag,
-			},
+			Description: `Deploys a fake Contract and generates a lot of calls behalf of accounts in the keystore dir (except config.Payer).`,
 		},
 		cli.Command{
 			Action:      generateTransfers,
 			Name:        "transfers",
-			Usage:       "Generates a lot of transfer transactions.",
-			Description: `Note: uses fakenet accounts.`,
-			Flags: []cli.Flag{
-				NumberFlag,
-			},
+			Description: `Generates a lot of transfer txs between accounts in the keystore dir (except config.Payer).`,
 		},
 	}
 	sort.Sort(cli.CommandsByName(app.Commands))
 
 	app.Flags = append(app.Flags,
+		KeyStoreDirFlag,
 		ConfigFileFlag,
 		TxnsRateFlag,
 		utils.MetricsEnabledFlag,
@@ -82,29 +98,128 @@ func before(ctx *cli.Context) error {
 	return nil
 }
 
+// importAcc action.
+func importAcc(ctx *cli.Context) error {
+	if ctx.NArg() < 2 {
+		return fmt.Errorf("Address and Keystore dir args expected")
+	}
+
+	acc := accounts.Account{
+		Address: common.HexToAddress(ctx.Args().Get(0)),
+	}
+	other, err := openKeyStore(ctx.Args().Get(1))
+	if err != nil {
+		return err
+	}
+
+	var password string
+	if ctx.NArg() > 2 {
+		password = ctx.Args().Get(2)
+	}
+
+	my, err := makeKeyStore(ctx)
+	if err != nil {
+		return err
+	}
+
+	decrypted, err := other.Export(acc, password, "")
+	if err != nil {
+		return err
+	}
+
+	_, err = my.Import(decrypted, "", "")
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// makeFakenetAccs action.
+func makeFakenetAccs(ctx *cli.Context) error {
+	var accsOffset int = 1
+	if ctx.NArg() > 0 {
+		i64, err := strconv.ParseUint(ctx.Args().Get(0), 10, 64)
+		if err != nil {
+			return err
+		}
+		accsOffset = int(i64)
+	}
+	var accsCount int = 1000
+	if ctx.NArg() > 1 {
+		i64, err := strconv.ParseUint(ctx.Args().Get(1), 10, 64)
+		if err != nil {
+			return err
+		}
+		accsCount = int(i64)
+	}
+
+	keyStore, err := makeKeyStore(ctx)
+	if err != nil {
+		return err
+	}
+
+	for i := accsOffset; i < (accsOffset + accsCount); i++ {
+		key := crypto.FakeKey(i)
+		// addr := crypto.PubkeyToAddress(key.PublicKey)
+		_, err := keyStore.ImportECDSA(key, "")
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// initAccsBalances action.
+func initAccsBalances(ctx *cli.Context) error {
+	cfg := mainCfg
+	cfg.URLs = cfg.URLs[:1] // txs from single payer should be sent by single sender
+	keyStore, err := makeKeyStore(ctx)
+	if err != nil {
+		return err
+	}
+
+	var amount int64 = 1e18
+	if ctx.NArg() > 0 {
+		i64, err := strconv.ParseUint(ctx.Args().Get(0), 10, 64)
+		if err != nil {
+			return err
+		}
+		amount = int64(i64)
+	}
+
+	generator := NewBalancesGenerator(cfg, keyStore, amount)
+	generator.SetName("InitBalance")
+	err = generate(generator)
+	return err
+}
+
 // generateCalls action.
 func generateCalls(ctx *cli.Context) error {
 	cfg := mainCfg
-	num, ofTotal := getNumber(ctx)
+	keyStore, err := makeKeyStore(ctx)
+	if err != nil {
+		return err
+	}
 
-	generator := NewCallsGenerator(cfg, num, ofTotal)
-	defer generator.Stop()
-	generator.SetName(fmt.Sprintf("CallsGen-%d", num))
-
-	err := generate(generator)
+	generator := NewCallsGenerator(cfg, keyStore)
+	generator.SetName("CallsGen")
+	err = generate(generator)
 	return err
 }
 
 // generateTransfers action.
 func generateTransfers(ctx *cli.Context) error {
 	cfg := mainCfg
-	num, ofTotal := getNumber(ctx)
+	keyStore, err := makeKeyStore(ctx)
+	if err != nil {
+		return err
+	}
 
-	generator := NewTransfersGenerator(cfg, num, ofTotal)
-	defer generator.Stop()
-	generator.SetName(fmt.Sprintf("TransfersGen-%d", num))
-
-	err := generate(generator)
+	generator := NewTransfersGenerator(cfg, keyStore)
+	generator.SetName("TransfersGen")
+	err = generate(generator)
 	return err
 }
 
@@ -112,20 +227,26 @@ func generateTransfers(ctx *cli.Context) error {
 func generate(generator Generator) error {
 	cfg := mainCfg
 	txs := generator.Start()
+	defer generator.Stop()
 
 	nodes := NewNodes(cfg, txs)
 	go func() {
 		for tps := range nodes.TPS() {
-			generator.SetTPS(tps + 50.0*float64(nodes.Count()))
+			generator.SetTPS(tps + 10.0*float64(nodes.Count()))
 		}
 	}()
 
-	waitForSignal()
+	waitForFinish(nodes.Done)
 	return nil
 }
 
-func waitForSignal() {
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
-	<-sigs
+func waitForFinish(done <-chan struct{}) {
+	term := make(chan os.Signal, 1)
+	signal.Notify(term, os.Interrupt, syscall.SIGTERM)
+	select {
+	case <-term:
+		break
+	case <-done:
+		break
+	}
 }

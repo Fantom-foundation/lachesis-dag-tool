@@ -38,7 +38,7 @@ func NewSender(url string) *Sender {
 	}
 
 	s.work.Add(1)
-	go s.background()
+	go s.background(s.done)
 
 	return s
 }
@@ -58,7 +58,7 @@ func (s *Sender) Send(tx *Transaction) {
 	s.input <- tx
 }
 
-func (s *Sender) background() {
+func (s *Sender) background(done <-chan struct{}) {
 	defer s.work.Done()
 	s.Log.Info("started")
 	defer s.Log.Info("stopped")
@@ -92,7 +92,7 @@ func (s *Sender) background() {
 				disconnect()
 			}
 			select {
-			case <-s.done:
+			case <-done:
 				return
 			case <-time.After(time.Second):
 			}
@@ -101,19 +101,18 @@ func (s *Sender) background() {
 		// input header
 		for tx == nil {
 			select {
+			case <-done:
+				return
 			case b := <-s.headers:
 				err = s.onNewHeader(client, b)
 				if err != nil {
 					disconnect()
 				}
-			case <-s.done:
-				return
 			case tx = <-s.input:
 			}
 		}
 
 		// output tx
-
 		var (
 			t      *types.Transaction
 			txHash common.Hash
