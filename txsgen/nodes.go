@@ -57,26 +57,29 @@ func (n *Nodes) notifyTPS(tps float64) {
 
 func (n *Nodes) measureTPS() {
 	var (
-		avgbuff = utils.NewAvgBuff(10)
-		start   = time.Unix(1, 0)
-		prev    float64
+		avgbuff       = utils.NewAvgBuff(50)
+		txCount int64 = 0
+		start         = time.Now()
 	)
-	for txCount := range n.receipts {
-		txCountGotMeter.Inc(int64(txCount))
+	for got := range n.receipts {
+		txCountGotMeter.Inc(int64(got))
+		txCount += got
 
 		dur := time.Since(start).Seconds()
+		if dur < 5.0 && txCount < 100 {
+			continue
+		}
+
 		tps := float64(txCount) / dur
 		avgbuff.Push(float64(txCount), dur)
-
 		txTpsMeter.Update(int64(tps))
 
-		start = time.Now()
 		avg := avgbuff.Avg()
-		if abs(prev-avg) >= 0.1 {
-			prev = avg
-			n.notifyTPS(avg)
-			n.Log.Info("TPS", "value", tps, "avg", avg)
-		}
+		n.notifyTPS(avg)
+		n.Log.Info("TPS", "current", tps, "avg", avg)
+
+		start = time.Now()
+		txCount = 0
 	}
 }
 
