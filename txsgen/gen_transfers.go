@@ -166,7 +166,7 @@ func (g *TransfersGenerator) generate(position uint, state *genState) *Transacti
 	amount = big.NewInt(1e5)
 
 	// wait every N
-	if position%500 == 0 {
+	if position%(count*10) == 0 {
 		state.NotReady("transer cicle")
 		callback = func(r *types.Receipt, e error) {
 			state.Ready()
