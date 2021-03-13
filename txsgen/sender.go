@@ -18,9 +18,7 @@ type Sender struct {
 	url       string
 	input     chan *Transaction
 	callbacks map[common.Hash]TxCallback
-	headers   chan *types.Header
 
-	done chan struct{}
 	work sync.WaitGroup
 
 	logger.Instance
@@ -31,43 +29,42 @@ func NewSender(url string) *Sender {
 		url:       url,
 		input:     make(chan *Transaction, 10),
 		callbacks: make(map[common.Hash]TxCallback),
-		headers:   make(chan *types.Header, 1),
-		done:      make(chan struct{}),
 
 		Instance: logger.MakeInstance(),
 	}
 
 	s.work.Add(1)
-	go s.background(s.done)
+	go s.background(s.input)
 
 	return s
 }
 
 func (s *Sender) Close() {
-	if s.done == nil {
+	if s.input == nil {
 		return
 	}
-	close(s.done)
-	s.done = nil
+	close(s.input)
+	s.input = nil
 
 	s.work.Wait()
-	close(s.input)
 }
 
 func (s *Sender) Send(tx *Transaction) {
 	s.input <- tx
 }
 
-func (s *Sender) background(done <-chan struct{}) {
+func (s *Sender) background(input <-chan *Transaction) {
 	defer s.work.Done()
 	s.Log.Info("started")
 	defer s.Log.Info("stopped")
 
 	var (
-		client *ethclient.Client
-		err    error
-		tx     *Transaction
-		sbscr  ethereum.Subscription
+		client  *ethclient.Client
+		err     error
+		ok      bool
+		tx      *Transaction
+		sbscr   ethereum.Subscription
+		headers = make(chan *types.Header, 1)
 	)
 
 	disconnect := func() {
@@ -87,28 +84,24 @@ func (s *Sender) background(done <-chan struct{}) {
 		// client connect
 		for client == nil {
 			client = s.connect()
-			sbscr = s.subscribe(client)
+			sbscr = s.subscribe(client, headers)
 			if sbscr == nil {
 				disconnect()
-			}
-			select {
-			case <-done:
-				return
-			case <-time.After(time.Second):
 			}
 		}
 
 		// input header
 		for tx == nil {
 			select {
-			case <-done:
-				return
-			case b := <-s.headers:
+			case b := <-headers:
 				err = s.onNewHeader(client, b)
 				if err != nil {
 					disconnect()
 				}
-			case tx = <-s.input:
+			case tx, ok = <-input:
+				if !ok {
+					return
+				}
 			}
 		}
 
@@ -165,7 +158,7 @@ func (s *Sender) connect() *ethclient.Client {
 	return client
 }
 
-func (s *Sender) subscribe(client *ethclient.Client) ethereum.Subscription {
+func (s *Sender) subscribe(client *ethclient.Client, headers chan *types.Header) ethereum.Subscription {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
@@ -174,7 +167,7 @@ func (s *Sender) subscribe(client *ethclient.Client) ethereum.Subscription {
 		err   error
 	)
 	try(func() error {
-		sbscr, err = client.SubscribeNewHead(ctx, s.headers)
+		sbscr, err = client.SubscribeNewHead(ctx, headers)
 		return err
 	})
 	if err != nil {
@@ -239,12 +232,7 @@ func (s *Sender) onNewHeader(client *ethclient.Client, h *types.Header) (err err
 }
 
 func (s *Sender) delay() {
-	select {
-	case <-time.After(2 * time.Second):
-		return
-	case <-s.done:
-		return
-	}
+	<-time.After(2 * time.Second)
 }
 
 func try(f func() error) (err error) {
