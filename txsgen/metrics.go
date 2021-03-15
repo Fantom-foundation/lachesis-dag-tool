@@ -25,7 +25,7 @@ func SetupPrometheus(ctx *cli.Context) {
 		return
 	}
 
-	prometheus.SetNamespace("txstorm")
+	prometheus.SetNamespace("txsgen")
 	var endpoint = ctx.GlobalString(MetricsPrometheusEndpointFlag.Name)
 	prometheus.ListenTo(endpoint, reg)
 }

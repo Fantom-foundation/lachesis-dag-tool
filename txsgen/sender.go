@@ -121,7 +121,6 @@ func (s *Sender) background(input <-chan *Transaction) {
 			if tx.Callback != nil {
 				s.callbacks[txHash] = tx.Callback
 			}
-			txCountSentMeter.Inc(1)
 			s.Log.Info("tx sending ok", "hash", txHash, "dsc", tx.Dsc)
 			tx = nil
 			continue
