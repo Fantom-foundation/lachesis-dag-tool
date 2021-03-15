@@ -71,7 +71,7 @@ func init() {
 	app.Flags = append(app.Flags,
 		KeyStoreDirFlag,
 		ConfigFileFlag,
-		TxnsRateFlag,
+		TpsLimitFlag,
 		utils.MetricsEnabledFlag,
 		MetricsPrometheusEndpointFlag,
 		VerbosityFlag,
@@ -189,9 +189,11 @@ func initAccsBalances(ctx *cli.Context) error {
 		amount = int64(i64)
 	}
 
+	maxTps := getTpsLimit(ctx)
+
 	generator := NewBalancesGenerator(cfg, keyStore, amount)
 	generator.SetName("InitBalance")
-	err = generate(generator)
+	err = generate(generator, maxTps)
 	return err
 }
 
@@ -203,9 +205,11 @@ func generateCalls(ctx *cli.Context) error {
 		return err
 	}
 
+	maxTps := getTpsLimit(ctx)
+
 	generator := NewCallsGenerator(cfg, keyStore)
 	generator.SetName("CallsGen")
-	err = generate(generator)
+	err = generate(generator, maxTps)
 	return err
 }
 
@@ -217,14 +221,16 @@ func generateTransfers(ctx *cli.Context) error {
 		return err
 	}
 
+	maxTps := getTpsLimit(ctx)
+
 	generator := NewTransfersGenerator(cfg, keyStore)
 	generator.SetName("TransfersGen")
-	err = generate(generator)
+	err = generate(generator, maxTps)
 	return err
 }
 
 // generate is the main generate loop.
-func generate(generator Generator) error {
+func generate(generator Generator, maxTps float64) error {
 	cfg := mainCfg
 	txs := generator.Start()
 	defer generator.Stop()
@@ -232,7 +238,11 @@ func generate(generator Generator) error {
 	nodes := NewNodes(cfg, txs)
 	go func() {
 		for tps := range nodes.TPS() {
-			generator.SetTPS(tps + 10.0*float64(nodes.Count()))
+			tps += 10.0 * float64(nodes.Count())
+			if maxTps > 0.0 && tps > maxTps {
+				tps = maxTps
+			}
+			generator.SetTPS(tps)
 		}
 	}()
 
