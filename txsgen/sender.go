@@ -131,6 +131,8 @@ func (s *Sender) background(input <-chan *Transaction) {
 		}
 
 		switch err.Error() {
+		case "already known":
+			fallthrough
 		case fmt.Sprintf("known transaction: %x", txHash),
 			evmcore.ErrNonceTooLow.Error(),
 			evmcore.ErrReplaceUnderpriced.Error():
@@ -212,19 +214,15 @@ func (s *Sender) onNewHeader(client *ethclient.Client, h *types.Header) (err err
 		if callback == nil {
 			continue
 		}
+		delete(s.callbacks, txHash)
 
 		var r *types.Receipt
 		err = try(func() error {
 			r, err = client.TransactionReceipt(ctx, txHash)
 			return err
 		})
-		if err != nil {
-			s.Log.Error("new receipt", "number", b.Number, "block", b.Hash, "index", index, "tx", txHash, "err", err)
-			return err
-		}
-		s.Log.Debug("new receipt", "number", b.Number, "block", b.Hash, "index", index, "tx", txHash)
-
-		callback(r, nil)
+		callback(r, err)
+		s.Log.Error("new receipt", "number", b.Number, "block", b.Hash, "index", index, "tx", txHash, "err", err)
 	}
 
 	return nil

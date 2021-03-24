@@ -165,6 +165,7 @@ func (g *CallsGenerator) generate(position uint, state *genState) *Transaction {
 		maker = g.ballotCreateContract(acc)
 		state.NotReady(dsc)
 		callback = func(r *types.Receipt, e error) {
+			// r may be nil
 			state.Session = &r.ContractAddress
 			state.Ready()
 		}
