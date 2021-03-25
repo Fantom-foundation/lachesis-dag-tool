@@ -228,7 +228,12 @@ func (s *Sender) readReceipts(n *big.Int, client *ethclient.Client) (err error) 
 		})
 		if err != nil {
 			s.Log.Error("new receipt", "block", n, "index", index, "tx", txHash, "err", err)
-			return
+			switch err.Error() {
+			case "not found":
+				err = nil // ignore
+			default:
+				return
+			}
 		}
 
 		callback(r, err)
