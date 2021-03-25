@@ -124,9 +124,9 @@ func (s *Sender) background(input <-chan *Transaction) {
 		select {
 		case b := <-headers:
 			if maxBlock.Cmp(b.Number) < 0 {
-				maxBlock = b.Number
+				maxBlock.Set(b.Number)
 				if curBlock.Cmp(big.NewInt(1)) == 0 {
-					curBlock = maxBlock
+					curBlock.Set(maxBlock)
 				}
 			}
 		case tx, ok = <-input:
