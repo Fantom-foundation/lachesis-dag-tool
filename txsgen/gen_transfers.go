@@ -23,8 +23,8 @@ type TransfersGenerator struct {
 	accs    []accounts.Account
 	nonces  []uint64
 
-	position       uint
-	generatorState genState
+	position uint
+	state    genState
 
 	work sync.WaitGroup
 	done chan struct{}
@@ -40,6 +40,7 @@ func NewTransfersGenerator(cfg *Config, ks *keystore.KeyStore) *TransfersGenerat
 
 		Instance: logger.MakeInstance(),
 	}
+	g.state.Log = g.Log
 
 	for _, acc := range ks.Accounts() {
 		if acc.Address == cfg.Payer {
@@ -141,10 +142,10 @@ func (g *TransfersGenerator) background(output chan<- *Transaction) {
 }
 
 func (g *TransfersGenerator) Yield() *Transaction {
-	if !g.generatorState.IsReady(g.done) {
+	if !g.state.IsReady(g.done) {
 		return nil
 	}
-	tx := g.generate(g.position, &g.generatorState)
+	tx := g.generate(g.position, &g.state)
 	g.Log.Info("generated tx", "position", g.position, "dsc", tx.Dsc)
 	g.position++
 

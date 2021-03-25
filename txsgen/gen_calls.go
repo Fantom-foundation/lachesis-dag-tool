@@ -22,8 +22,8 @@ type CallsGenerator struct {
 	ks      *keystore.KeyStore
 	accs    []accounts.Account
 
-	position       uint
-	generatorState genState
+	position uint
+	state    genState
 
 	work sync.WaitGroup
 	done chan struct{}
@@ -39,6 +39,7 @@ func NewCallsGenerator(cfg *Config, ks *keystore.KeyStore) *CallsGenerator {
 
 		Instance: logger.MakeInstance(),
 	}
+	g.state.Log = g.Log
 
 	for _, acc := range ks.Accounts() {
 		if acc.Address == cfg.Payer {
@@ -138,10 +139,10 @@ func (g *CallsGenerator) background(output chan<- *Transaction) {
 }
 
 func (g *CallsGenerator) Yield() *Transaction {
-	if !g.generatorState.IsReady(g.done) {
+	if !g.state.IsReady(g.done) {
 		return nil
 	}
-	tx := g.generate(g.position, &g.generatorState)
+	tx := g.generate(g.position, &g.state)
 	g.Log.Info("generated tx", "position", g.position, "dsc", tx.Dsc)
 	g.position++
 

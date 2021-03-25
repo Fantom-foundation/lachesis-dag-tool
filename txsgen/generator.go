@@ -1,9 +1,9 @@
 package main
 
 import (
+	"github.com/Fantom-foundation/go-lachesis/logger"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/ethereum/go-ethereum/log"
 )
 
 type TxMaker func(*ethclient.Client) (*types.Transaction, error)
@@ -25,6 +25,8 @@ type genState struct {
 	ready          chan struct{}
 	notReadyReason string
 	Session        interface{}
+
+	logger.Instance
 }
 
 func (s *genState) NotReady(reason string) {
@@ -37,7 +39,7 @@ func (s *genState) IsReady(done <-chan struct{}) bool {
 		return true
 	}
 
-	log.Warn("Waiting", "reason", s.notReadyReason)
+	s.Log.Warn("waiting", "reason", s.notReadyReason)
 
 	select {
 	case <-done:
