@@ -4,14 +4,14 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Fantom-foundation/go-lachesis/lachesis/params"
+	"github.com/Fantom-foundation/go-opera/opera"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"gopkg.in/urfave/cli.v1"
 )
 
 var (
 	gasLimit = uint64(21000)
-	gasPrice = params.MinGasPrice // minimal
+	gasPrice = opera.FakeEconomyRules().MinGasPrice // minimal
 )
 
 func makeKeyStore(ctx *cli.Context) (*keystore.KeyStore, error) {

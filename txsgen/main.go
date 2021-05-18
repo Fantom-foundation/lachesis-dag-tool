@@ -8,15 +8,15 @@ import (
 	"strconv"
 	"syscall"
 
-	"github.com/Fantom-foundation/go-lachesis/crypto"
+	"github.com/Fantom-foundation/go-opera/flags"
+	"github.com/Fantom-foundation/go-opera/integration/makegenesis"
+	_ "github.com/Fantom-foundation/go-opera/version"
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"gopkg.in/urfave/cli.v1"
-
-	_ "github.com/Fantom-foundation/go-lachesis/version"
 )
 
 var (
@@ -24,9 +24,7 @@ var (
 	gitCommit = ""
 	gitDate   = ""
 	// The app that holds all commands and flags.
-	app = utils.NewApp(gitCommit, gitDate, "the transactions generator CLI")
-
-	flags []cli.Flag
+	app = flags.NewApp(gitCommit, gitDate, "the transactions generator CLI")
 
 	mainCfg *Config
 )
@@ -160,8 +158,7 @@ func makeFakenetAccs(ctx *cli.Context) error {
 	}
 
 	for i := accsOffset; i < (accsOffset + accsCount); i++ {
-		key := crypto.FakeKey(i)
-		// addr := crypto.PubkeyToAddress(key.PublicKey)
+		key := makegenesis.FakeKey(i)
 		_, err := keyStore.ImportECDSA(key, "")
 		if err != nil {
 			return err

@@ -20,7 +20,6 @@ var (
 	_ = big.NewInt
 	_ = strings.NewReader
 	_ = ethereum.NotFound
-	_ = abi.U256
 	_ = bind.Bind
 	_ = common.Big1
 	_ = types.BloomLookup
@@ -191,7 +190,7 @@ func (_Contract *ContractTransactorRaw) Transact(opts *bind.TransactOpts, method
 
 // Proposals is a free data retrieval call binding the contract method 0x013cf08b.
 //
-// Solidity: function proposals(uint256 ) constant returns(bytes32 name, uint256 voteCount)
+// Solidity: function proposals(uint256 ) view returns(bytes32 name, uint256 voteCount)
 func (_Contract *ContractCaller) Proposals(opts *bind.CallOpts, arg0 *big.Int) (struct {
 	Name      [32]byte
 	VoteCount *big.Int
@@ -207,7 +206,7 @@ func (_Contract *ContractCaller) Proposals(opts *bind.CallOpts, arg0 *big.Int) (
 
 // Proposals is a free data retrieval call binding the contract method 0x013cf08b.
 //
-// Solidity: function proposals(uint256 ) constant returns(bytes32 name, uint256 voteCount)
+// Solidity: function proposals(uint256 ) view returns(bytes32 name, uint256 voteCount)
 func (_Contract *ContractSession) Proposals(arg0 *big.Int) (struct {
 	Name      [32]byte
 	VoteCount *big.Int
@@ -217,7 +216,7 @@ func (_Contract *ContractSession) Proposals(arg0 *big.Int) (struct {
 
 // Proposals is a free data retrieval call binding the contract method 0x013cf08b.
 //
-// Solidity: function proposals(uint256 ) constant returns(bytes32 name, uint256 voteCount)
+// Solidity: function proposals(uint256 ) view returns(bytes32 name, uint256 voteCount)
 func (_Contract *ContractCallerSession) Proposals(arg0 *big.Int) (struct {
 	Name      [32]byte
 	VoteCount *big.Int
@@ -227,7 +226,7 @@ func (_Contract *ContractCallerSession) Proposals(arg0 *big.Int) (struct {
 
 // Voters is a free data retrieval call binding the contract method 0xa3ec138d.
 //
-// Solidity: function voters(address ) constant returns(uint256 vote)
+// Solidity: function voters(address ) view returns(uint256 vote)
 func (_Contract *ContractCaller) Voters(opts *bind.CallOpts, arg0 common.Address) (*big.Int, error) {
 	var (
 		ret0 = new(*big.Int)
@@ -239,21 +238,21 @@ func (_Contract *ContractCaller) Voters(opts *bind.CallOpts, arg0 common.Address
 
 // Voters is a free data retrieval call binding the contract method 0xa3ec138d.
 //
-// Solidity: function voters(address ) constant returns(uint256 vote)
+// Solidity: function voters(address ) view returns(uint256 vote)
 func (_Contract *ContractSession) Voters(arg0 common.Address) (*big.Int, error) {
 	return _Contract.Contract.Voters(&_Contract.CallOpts, arg0)
 }
 
 // Voters is a free data retrieval call binding the contract method 0xa3ec138d.
 //
-// Solidity: function voters(address ) constant returns(uint256 vote)
+// Solidity: function voters(address ) view returns(uint256 vote)
 func (_Contract *ContractCallerSession) Voters(arg0 common.Address) (*big.Int, error) {
 	return _Contract.Contract.Voters(&_Contract.CallOpts, arg0)
 }
 
 // WinnerName is a free data retrieval call binding the contract method 0xe2ba53f0.
 //
-// Solidity: function winnerName() constant returns(bytes32 winnerName_)
+// Solidity: function winnerName() view returns(bytes32 winnerName_)
 func (_Contract *ContractCaller) WinnerName(opts *bind.CallOpts) ([32]byte, error) {
 	var (
 		ret0 = new([32]byte)
@@ -265,21 +264,21 @@ func (_Contract *ContractCaller) WinnerName(opts *bind.CallOpts) ([32]byte, erro
 
 // WinnerName is a free data retrieval call binding the contract method 0xe2ba53f0.
 //
-// Solidity: function winnerName() constant returns(bytes32 winnerName_)
+// Solidity: function winnerName() view returns(bytes32 winnerName_)
 func (_Contract *ContractSession) WinnerName() ([32]byte, error) {
 	return _Contract.Contract.WinnerName(&_Contract.CallOpts)
 }
 
 // WinnerName is a free data retrieval call binding the contract method 0xe2ba53f0.
 //
-// Solidity: function winnerName() constant returns(bytes32 winnerName_)
+// Solidity: function winnerName() view returns(bytes32 winnerName_)
 func (_Contract *ContractCallerSession) WinnerName() ([32]byte, error) {
 	return _Contract.Contract.WinnerName(&_Contract.CallOpts)
 }
 
 // WinningProposal is a free data retrieval call binding the contract method 0x609ff1bd.
 //
-// Solidity: function winningProposal() constant returns(uint256 winningProposal_)
+// Solidity: function winningProposal() view returns(uint256 winningProposal_)
 func (_Contract *ContractCaller) WinningProposal(opts *bind.CallOpts) (*big.Int, error) {
 	var (
 		ret0 = new(*big.Int)
@@ -291,35 +290,35 @@ func (_Contract *ContractCaller) WinningProposal(opts *bind.CallOpts) (*big.Int,
 
 // WinningProposal is a free data retrieval call binding the contract method 0x609ff1bd.
 //
-// Solidity: function winningProposal() constant returns(uint256 winningProposal_)
+// Solidity: function winningProposal() view returns(uint256 winningProposal_)
 func (_Contract *ContractSession) WinningProposal() (*big.Int, error) {
 	return _Contract.Contract.WinningProposal(&_Contract.CallOpts)
 }
 
 // WinningProposal is a free data retrieval call binding the contract method 0x609ff1bd.
 //
-// Solidity: function winningProposal() constant returns(uint256 winningProposal_)
+// Solidity: function winningProposal() view returns(uint256 winningProposal_)
 func (_Contract *ContractCallerSession) WinningProposal() (*big.Int, error) {
 	return _Contract.Contract.WinningProposal(&_Contract.CallOpts)
 }
 
 // Vote is a paid mutator transaction binding the contract method 0x0121b93f.
 //
-// Solidity: function vote(uint256 proposal) returns()
+// Solidity: function vote(uint256 proposal) payable returns()
 func (_Contract *ContractTransactor) Vote(opts *bind.TransactOpts, proposal *big.Int) (*types.Transaction, error) {
 	return _Contract.contract.Transact(opts, "vote", proposal)
 }
 
 // Vote is a paid mutator transaction binding the contract method 0x0121b93f.
 //
-// Solidity: function vote(uint256 proposal) returns()
+// Solidity: function vote(uint256 proposal) payable returns()
 func (_Contract *ContractSession) Vote(proposal *big.Int) (*types.Transaction, error) {
 	return _Contract.Contract.Vote(&_Contract.TransactOpts, proposal)
 }
 
 // Vote is a paid mutator transaction binding the contract method 0x0121b93f.
 //
-// Solidity: function vote(uint256 proposal) returns()
+// Solidity: function vote(uint256 proposal) payable returns()
 func (_Contract *ContractTransactorSession) Vote(proposal *big.Int) (*types.Transaction, error) {
 	return _Contract.Contract.Vote(&_Contract.TransactOpts, proposal)
 }
