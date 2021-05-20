@@ -158,10 +158,6 @@ func (s *Sender) sendTx(tx *Transaction, client *ethclient.Client) (err error) {
 		return
 	}
 
-	if tx.Callback != nil {
-		tx.Callback(nil, err)
-	}
-
 	switch err.Error() {
 	case "already known",
 		fmt.Sprintf("known transaction: %x", txHash),
@@ -171,6 +167,10 @@ func (s *Sender) sendTx(tx *Transaction, client *ethclient.Client) (err error) {
 		err = nil
 	default:
 		s.Log.Error("tx sending err", "hash", txHash, "dsc", tx.Dsc, "err", err)
+	}
+
+	if tx.Callback != nil {
+		tx.Callback(nil, err)
 	}
 
 	return
