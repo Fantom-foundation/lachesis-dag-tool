@@ -154,7 +154,7 @@ func bindContract(address common.Address, caller bind.ContractCaller, transactor
 // sets the output to result. The result type might be a single field for simple
 // returns, a slice of interfaces for anonymous returns and a struct for named
 // returns.
-func (_Contract *ContractRaw) Call(opts *bind.CallOpts, result interface{}, method string, params ...interface{}) error {
+func (_Contract *ContractRaw) Call(opts *bind.CallOpts, result *[]interface{}, method string, params ...interface{}) error {
 	return _Contract.Contract.ContractCaller.contract.Call(opts, result, method, params...)
 }
 
@@ -173,7 +173,7 @@ func (_Contract *ContractRaw) Transact(opts *bind.TransactOpts, method string, p
 // sets the output to result. The result type might be a single field for simple
 // returns, a slice of interfaces for anonymous returns and a struct for named
 // returns.
-func (_Contract *ContractCallerRaw) Call(opts *bind.CallOpts, result interface{}, method string, params ...interface{}) error {
+func (_Contract *ContractCallerRaw) Call(opts *bind.CallOpts, result *[]interface{}, method string, params ...interface{}) error {
 	return _Contract.Contract.contract.Call(opts, result, method, params...)
 }
 
@@ -195,13 +195,22 @@ func (_Contract *ContractCaller) Proposals(opts *bind.CallOpts, arg0 *big.Int) (
 	Name      [32]byte
 	VoteCount *big.Int
 }, error) {
-	ret := new(struct {
+	var out []interface{}
+	err := _Contract.contract.Call(opts, &out, "proposals", arg0)
+
+	outstruct := new(struct {
 		Name      [32]byte
 		VoteCount *big.Int
 	})
-	out := ret
-	err := _Contract.contract.Call(opts, out, "proposals", arg0)
-	return *ret, err
+	if err != nil {
+		return *outstruct, err
+	}
+
+	outstruct.Name = *abi.ConvertType(out[0], new([32]byte)).(*[32]byte)
+	outstruct.VoteCount = *abi.ConvertType(out[1], new(*big.Int)).(**big.Int)
+
+	return *outstruct, err
+
 }
 
 // Proposals is a free data retrieval call binding the contract method 0x013cf08b.
@@ -228,12 +237,17 @@ func (_Contract *ContractCallerSession) Proposals(arg0 *big.Int) (struct {
 //
 // Solidity: function voters(address ) view returns(uint256 vote)
 func (_Contract *ContractCaller) Voters(opts *bind.CallOpts, arg0 common.Address) (*big.Int, error) {
-	var (
-		ret0 = new(*big.Int)
-	)
-	out := ret0
-	err := _Contract.contract.Call(opts, out, "voters", arg0)
-	return *ret0, err
+	var out []interface{}
+	err := _Contract.contract.Call(opts, &out, "voters", arg0)
+
+	if err != nil {
+		return *new(*big.Int), err
+	}
+
+	out0 := *abi.ConvertType(out[0], new(*big.Int)).(**big.Int)
+
+	return out0, err
+
 }
 
 // Voters is a free data retrieval call binding the contract method 0xa3ec138d.
@@ -254,12 +268,17 @@ func (_Contract *ContractCallerSession) Voters(arg0 common.Address) (*big.Int, e
 //
 // Solidity: function winnerName() view returns(bytes32 winnerName_)
 func (_Contract *ContractCaller) WinnerName(opts *bind.CallOpts) ([32]byte, error) {
-	var (
-		ret0 = new([32]byte)
-	)
-	out := ret0
-	err := _Contract.contract.Call(opts, out, "winnerName")
-	return *ret0, err
+	var out []interface{}
+	err := _Contract.contract.Call(opts, &out, "winnerName")
+
+	if err != nil {
+		return *new([32]byte), err
+	}
+
+	out0 := *abi.ConvertType(out[0], new([32]byte)).(*[32]byte)
+
+	return out0, err
+
 }
 
 // WinnerName is a free data retrieval call binding the contract method 0xe2ba53f0.
@@ -280,12 +299,17 @@ func (_Contract *ContractCallerSession) WinnerName() ([32]byte, error) {
 //
 // Solidity: function winningProposal() view returns(uint256 winningProposal_)
 func (_Contract *ContractCaller) WinningProposal(opts *bind.CallOpts) (*big.Int, error) {
-	var (
-		ret0 = new(*big.Int)
-	)
-	out := ret0
-	err := _Contract.contract.Call(opts, out, "winningProposal")
-	return *ret0, err
+	var out []interface{}
+	err := _Contract.contract.Call(opts, &out, "winningProposal")
+
+	if err != nil {
+		return *new(*big.Int), err
+	}
+
+	out0 := *abi.ConvertType(out[0], new(*big.Int)).(**big.Int)
+
+	return out0, err
+
 }
 
 // WinningProposal is a free data retrieval call binding the contract method 0x609ff1bd.
@@ -482,5 +506,6 @@ func (_Contract *ContractFilterer) ParseVoiting(log types.Log) (*ContractVoiting
 	if err := _Contract.contract.UnpackLog(event, "Voiting", log); err != nil {
 		return nil, err
 	}
+	event.Raw = log
 	return event, nil
 }
