@@ -18,7 +18,7 @@ import (
 
 type CallsGenerator struct {
 	tps     uint32
-	chainId uint
+	chainId *big.Int
 	ks      *keystore.KeyStore
 	accs    []accounts.Account
 
@@ -34,7 +34,7 @@ type CallsGenerator struct {
 
 func NewCallsGenerator(cfg *Config, ks *keystore.KeyStore) *CallsGenerator {
 	g := &CallsGenerator{
-		chainId: uint(cfg.ChainId),
+		chainId: big.NewInt(cfg.ChainId),
 		ks:      ks,
 
 		Instance: logger.MakeInstance(),
@@ -200,7 +200,7 @@ func (g *CallsGenerator) generate(position uint, state *genState) *Transaction {
 }
 
 func (g *CallsGenerator) Payer(from accounts.Account, amounts ...*big.Int) *bind.TransactOpts {
-	t, err := bind.NewKeyStoreTransactor(g.ks, from)
+	t, err := bind.NewKeyStoreTransactorWithChainID(g.ks, from, g.chainId)
 	if err != nil {
 		panic(err)
 	}
