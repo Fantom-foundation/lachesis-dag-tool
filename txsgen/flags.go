@@ -17,7 +17,7 @@ func getTpsLimit(ctx *cli.Context) float64 {
 var KeyStoreDirFlag = cli.StringFlag{
 	Name:  "keystore",
 	Usage: "Directory for the keystore",
-	Value: "keystore",
+	Value: "keys_txsgen",
 }
 
 var VerbosityFlag = cli.IntFlag{
