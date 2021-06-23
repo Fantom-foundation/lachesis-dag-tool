@@ -36,6 +36,8 @@ github.com/BurntSushi/xgb v0.0.0-20160522181843-27f122750802/go.mod h1:IVnqGOEym
 github.com/DATA-DOG/go-sqlmock v1.3.3/go.mod h1:f/Ixk793poVmq4qj/V1dPUg2JEAKC73Q5eFN3EC/SaM=
 github.com/Fantom-foundation/go-ethereum v1.9.7-0.20210531094457-b859cd9c4511 h1:7jwGrwFrzAd21L5aUnT7dnMDUwYNjSZs5u8qHT0JCoU=
 github.com/Fantom-foundation/go-ethereum v1.9.7-0.20210531094457-b859cd9c4511/go.mod h1:AItrK6rpGqvJuNAK06OPjCgxS71WP1EmWbn/t9zAM/M=
+github.com/Fantom-foundation/go-opera v0.0.0-20210621102035-55aaa977f8f5 h1:UkXV6uHFQVuaVrOpYgW+wIXAzBbIDJQVB/boe+T8SQA=
+github.com/Fantom-foundation/go-opera v0.0.0-20210621102035-55aaa977f8f5/go.mod h1:hbbLvYrZ+smp5RYmKIZbqRE2pFu4QF3Z4ANGG16DGWs=
 github.com/Fantom-foundation/lachesis-base v0.0.0-20210420092627-c16f01e35562 h1:SFcBjyI5dos9JeIRBHnzU88SlVTlEjRbAUrlZ40uWfk=
 github.com/Fantom-foundation/lachesis-base v0.0.0-20210420092627-c16f01e35562/go.mod h1:E6+2LOvgADwSOv0U5YXhRJz4PlX8qJxvq8M93AOC1tM=
 github.com/OneOfOne/xxhash v1.2.2/go.mod h1:HSdplMjZKSmBqAxg5vPj2TmRDmfkzw+cTzAElWljhcU=
@@ -382,8 +384,6 @@ github.com/rjeczalik/notify v0.9.2/go.mod h1:aErll2f0sUX9PXZnVNyeiObbmTlk5jnMoCa
 github.com/rogpeppe/go-internal v1.3.0/go.mod h1:M8bDsm7K2OlrFYOpmOWEs/qY81heoFRclV5y23lUDJ4=
 github.com/rs/cors v1.7.0 h1:+88SsELBHx5r+hZ8TCkggzSstaWNbDvThkVK8H6f9ik=
 github.com/rs/cors v1.7.0/go.mod h1:gFx+x8UowdsKA9AchylcLynDq+nNFfI8FkUZdN/jGCU=
-github.com/rus-alex/go-opera v0.0.0-20210617072707-c1a3e5a41464 h1:ObAS4lDz+D8Y21UVlMjGZH8ij6AVS3y6DywPAE24A6E=
-github.com/rus-alex/go-opera v0.0.0-20210617072707-c1a3e5a41464/go.mod h1:hbbLvYrZ+smp5RYmKIZbqRE2pFu4QF3Z4ANGG16DGWs=
 github.com/russross/blackfriday/v2 v2.0.1/go.mod h1:+Rmxgy9KzJVeS9/2gXHxylqXiyQDYRxCVz55jmeOWTM=
 github.com/segmentio/kafka-go v0.1.0/go.mod h1:X6itGqS9L4jDletMsxZ7Dz+JFWxM6JHfPOCvTvk+EJo=
 github.com/segmentio/kafka-go v0.2.0/go.mod h1:X6itGqS9L4jDletMsxZ7Dz+JFWxM6JHfPOCvTvk+EJo=
