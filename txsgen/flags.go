@@ -4,19 +4,20 @@ import (
 	"gopkg.in/urfave/cli.v1"
 )
 
-var TxnsRateFlag = cli.IntFlag{
-	Name:  "rate",
-	Usage: "transactions per second (max sum of all instances)",
+var TpsLimitFlag = cli.Float64Flag{
+	Name:  "tpslimit",
+	Usage: "transactions per second limit",
+	Value: -1.0,
 }
 
-func getTxnsRate(ctx *cli.Context) uint {
-	return uint(ctx.GlobalInt(TxnsRateFlag.Name))
+func getTpsLimit(ctx *cli.Context) float64 {
+	return ctx.GlobalFloat64(TpsLimitFlag.Name)
 }
 
 var KeyStoreDirFlag = cli.StringFlag{
 	Name:  "keystore",
 	Usage: "Directory for the keystore",
-	Value: "keystore",
+	Value: "keys_txsgen",
 }
 
 var VerbosityFlag = cli.IntFlag{

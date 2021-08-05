@@ -8,15 +8,15 @@ import (
 	"strconv"
 	"syscall"
 
-	"github.com/Fantom-foundation/go-lachesis/crypto"
+	"github.com/Fantom-foundation/go-opera/flags"
+	"github.com/Fantom-foundation/go-opera/integration/makegenesis"
+	_ "github.com/Fantom-foundation/go-opera/version"
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"gopkg.in/urfave/cli.v1"
-
-	_ "github.com/Fantom-foundation/go-lachesis/version"
 )
 
 var (
@@ -24,9 +24,7 @@ var (
 	gitCommit = ""
 	gitDate   = ""
 	// The app that holds all commands and flags.
-	app = utils.NewApp(gitCommit, gitDate, "the transactions generator CLI")
-
-	flags []cli.Flag
+	app = flags.NewApp(gitCommit, gitDate, "the transactions generator CLI")
 
 	mainCfg *Config
 )
@@ -71,7 +69,7 @@ func init() {
 	app.Flags = append(app.Flags,
 		KeyStoreDirFlag,
 		ConfigFileFlag,
-		TxnsRateFlag,
+		TpsLimitFlag,
 		utils.MetricsEnabledFlag,
 		MetricsPrometheusEndpointFlag,
 		VerbosityFlag,
@@ -160,8 +158,7 @@ func makeFakenetAccs(ctx *cli.Context) error {
 	}
 
 	for i := accsOffset; i < (accsOffset + accsCount); i++ {
-		key := crypto.FakeKey(i)
-		// addr := crypto.PubkeyToAddress(key.PublicKey)
+		key := makegenesis.FakeKey(i)
 		_, err := keyStore.ImportECDSA(key, "")
 		if err != nil {
 			return err
@@ -189,9 +186,11 @@ func initAccsBalances(ctx *cli.Context) error {
 		amount = int64(i64)
 	}
 
+	maxTps := getTpsLimit(ctx)
+
 	generator := NewBalancesGenerator(cfg, keyStore, amount)
 	generator.SetName("InitBalance")
-	err = generate(generator)
+	err = generate(generator, maxTps)
 	return err
 }
 
@@ -203,9 +202,11 @@ func generateCalls(ctx *cli.Context) error {
 		return err
 	}
 
+	maxTps := getTpsLimit(ctx)
+
 	generator := NewCallsGenerator(cfg, keyStore)
 	generator.SetName("CallsGen")
-	err = generate(generator)
+	err = generate(generator, maxTps)
 	return err
 }
 
@@ -217,14 +218,16 @@ func generateTransfers(ctx *cli.Context) error {
 		return err
 	}
 
+	maxTps := getTpsLimit(ctx)
+
 	generator := NewTransfersGenerator(cfg, keyStore)
 	generator.SetName("TransfersGen")
-	err = generate(generator)
+	err = generate(generator, maxTps)
 	return err
 }
 
 // generate is the main generate loop.
-func generate(generator Generator) error {
+func generate(generator Generator, maxTps float64) error {
 	cfg := mainCfg
 	txs := generator.Start()
 	defer generator.Stop()
@@ -232,7 +235,11 @@ func generate(generator Generator) error {
 	nodes := NewNodes(cfg, txs)
 	go func() {
 		for tps := range nodes.TPS() {
-			generator.SetTPS(tps + 10.0*float64(nodes.Count()))
+			tps += 10.0 * float64(nodes.Count())
+			if maxTps > 0.0 && tps > maxTps {
+				tps = maxTps
+			}
+			generator.SetTPS(tps)
 		}
 	}()
 

@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Fantom-foundation/go-lachesis/logger"
+	"github.com/Fantom-foundation/go-opera/logger"
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -24,8 +24,8 @@ type BalancesGenerator struct {
 	payer   accounts.Account
 	accs    []accounts.Account
 
-	position       uint
-	generatorState genState
+	position uint
+	state    genState
 
 	work sync.WaitGroup
 	done chan struct{}
@@ -42,6 +42,7 @@ func NewBalancesGenerator(cfg *Config, ks *keystore.KeyStore, amount int64) *Bal
 
 		Instance: logger.MakeInstance(),
 	}
+	g.state.Log = g.Log
 
 	var found bool
 	for _, acc := range ks.Accounts() {
@@ -151,10 +152,10 @@ func (g *BalancesGenerator) background(output chan<- *Transaction) {
 }
 
 func (g *BalancesGenerator) Yield() *Transaction {
-	if !g.generatorState.IsReady(g.done) {
+	if !g.state.IsReady(g.done) {
 		return nil
 	}
-	tx := g.generate(g.position, &g.generatorState)
+	tx := g.generate(g.position, &g.state)
 	if tx == nil {
 		return nil
 	}

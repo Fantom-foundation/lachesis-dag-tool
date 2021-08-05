@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Fantom-foundation/go-lachesis/logger"
+	"github.com/Fantom-foundation/go-opera/logger"
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
@@ -18,12 +18,12 @@ import (
 
 type CallsGenerator struct {
 	tps     uint32
-	chainId uint
+	chainId *big.Int
 	ks      *keystore.KeyStore
 	accs    []accounts.Account
 
-	position       uint
-	generatorState genState
+	position uint
+	state    genState
 
 	work sync.WaitGroup
 	done chan struct{}
@@ -34,11 +34,12 @@ type CallsGenerator struct {
 
 func NewCallsGenerator(cfg *Config, ks *keystore.KeyStore) *CallsGenerator {
 	g := &CallsGenerator{
-		chainId: uint(cfg.ChainId),
+		chainId: big.NewInt(cfg.ChainId),
 		ks:      ks,
 
 		Instance: logger.MakeInstance(),
 	}
+	g.state.Log = g.Log
 
 	for _, acc := range ks.Accounts() {
 		if acc.Address == cfg.Payer {
@@ -138,10 +139,10 @@ func (g *CallsGenerator) background(output chan<- *Transaction) {
 }
 
 func (g *CallsGenerator) Yield() *Transaction {
-	if !g.generatorState.IsReady(g.done) {
+	if !g.state.IsReady(g.done) {
 		return nil
 	}
-	tx := g.generate(g.position, &g.generatorState)
+	tx := g.generate(g.position, &g.state)
 	g.Log.Info("generated tx", "position", g.position, "dsc", tx.Dsc)
 	g.position++
 
@@ -165,6 +166,7 @@ func (g *CallsGenerator) generate(position uint, state *genState) *Transaction {
 		maker = g.ballotCreateContract(acc)
 		state.NotReady(dsc)
 		callback = func(r *types.Receipt, e error) {
+			// r may be nil, then panic
 			state.Session = &r.ContractAddress
 			state.Ready()
 		}
@@ -198,7 +200,7 @@ func (g *CallsGenerator) generate(position uint, state *genState) *Transaction {
 }
 
 func (g *CallsGenerator) Payer(from accounts.Account, amounts ...*big.Int) *bind.TransactOpts {
-	t, err := bind.NewKeyStoreTransactor(g.ks, from)
+	t, err := bind.NewKeyStoreTransactorWithChainID(g.ks, from, g.chainId)
 	if err != nil {
 		panic(err)
 	}

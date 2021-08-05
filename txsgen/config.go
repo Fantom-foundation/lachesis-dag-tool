@@ -3,7 +3,7 @@ package main
 import (
 	"errors"
 
-	"github.com/Fantom-foundation/go-lachesis/lachesis"
+	"github.com/Fantom-foundation/go-opera/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"gopkg.in/urfave/cli.v1"
 
@@ -24,7 +24,7 @@ type Config struct {
 
 func DefaultConfig() *Config {
 	return &Config{
-		ChainId: int64(lachesis.FakeNetworkID),
+		ChainId: int64(opera.FakeNetworkID),
 		URLs: []string{
 			"ws://127.0.0.1:4500",
 		},

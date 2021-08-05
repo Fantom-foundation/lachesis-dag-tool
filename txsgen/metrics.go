@@ -3,7 +3,7 @@ package main
 import (
 	"github.com/ethereum/go-ethereum/metrics"
 	cli "gopkg.in/urfave/cli.v1"
-	"github.com/Fantom-foundation/go-lachesis/metrics/prometheus"
+	"github.com/Fantom-foundation/go-opera/metrics/prometheus"
 )
 
 var MetricsPrometheusEndpointFlag = cli.StringFlag{
@@ -25,7 +25,7 @@ func SetupPrometheus(ctx *cli.Context) {
 		return
 	}
 
-	prometheus.SetNamespace("txstorm")
+	prometheus.SetNamespace("txsgen")
 	var endpoint = ctx.GlobalString(MetricsPrometheusEndpointFlag.Name)
 	prometheus.ListenTo(endpoint, reg)
 }

@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Fantom-foundation/go-lachesis/logger"
+	"github.com/Fantom-foundation/go-opera/logger"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/ethclient"
 
 	"github.com/Fantom-foundation/lachesis-dag-tool/txsgen/utils"
 )
@@ -13,6 +14,7 @@ import (
 // Nodes pool.
 type Nodes struct {
 	tps      chan float64
+	sents    chan int64
 	receipts chan int64
 	conns    []*Sender
 	Done     chan struct{}
@@ -23,6 +25,7 @@ type Nodes struct {
 func NewNodes(cfg *Config, input <-chan *Transaction) *Nodes {
 	n := &Nodes{
 		tps:      make(chan float64, 1),
+		sents:    make(chan int64, 10),
 		receipts: make(chan int64, 10),
 		Done:     make(chan struct{}),
 		cfg:      cfg,
@@ -35,7 +38,8 @@ func NewNodes(cfg *Config, input <-chan *Transaction) *Nodes {
 
 	n.notifyTPS(0)
 	go n.background(input)
-	go n.measureTPS()
+	go n.measureGeneratorTPS()
+	go n.measureNetworkTPS()
 	return n
 }
 
@@ -55,14 +59,14 @@ func (n *Nodes) notifyTPS(tps float64) {
 	}
 }
 
-func (n *Nodes) measureTPS() {
+func (n *Nodes) measureGeneratorTPS() {
 	var (
 		avgbuff       = utils.NewAvgBuff(50)
 		txCount int64 = 0
 		start         = time.Now()
 	)
-	for got := range n.receipts {
-		txCountGotMeter.Inc(int64(got))
+	for got := range n.sents {
+		txCountSentMeter.Inc(got)
 		txCount += got
 
 		dur := time.Since(start).Seconds()
@@ -72,14 +76,41 @@ func (n *Nodes) measureTPS() {
 
 		tps := float64(txCount) / dur
 		avgbuff.Push(float64(txCount), dur)
-		txTpsMeter.Update(int64(tps))
 
 		avg := avgbuff.Avg()
-		n.notifyTPS(avg)
-		n.Log.Info("TPS", "current", tps, "avg", avg)
+		n.Log.Info("generator TPS", "current", tps, "avg", avg)
 
 		start = time.Now()
 		txCount = 0
+	}
+}
+
+func (n *Nodes) measureNetworkTPS() {
+	var (
+		avgbuff       = utils.NewAvgBuff(50)
+		txCount int64 = 0
+		start         = time.Now()
+	)
+	for got := range n.receipts {
+		txCountGotMeter.Inc(got)
+		txCount += got
+
+		dur := time.Since(start).Seconds()
+		if dur < 5.0 && txCount < 100 {
+			continue
+		}
+
+		tps := float64(txCount) / dur
+		avgbuff.Push(float64(txCount), dur)
+
+		avg := avgbuff.Avg()
+		n.Log.Info("network TPS", "current", tps, "avg", avg)
+
+		start = time.Now()
+		txCount = 0
+
+		n.notifyTPS(avg)
+		txTpsMeter.Update(int64(tps))
 	}
 }
 
@@ -120,6 +151,15 @@ func (n *Nodes) wrapWithCounter(tx *Transaction) *Transaction {
 		if callback != nil {
 			callback(r, e)
 		}
+	}
+
+	maker := tx.Make
+	tx.Make = func(client *ethclient.Client) (*types.Transaction, error) {
+		t, e := maker(client)
+		if e == nil {
+			n.sents <- 1
+		}
+		return t, e
 	}
 
 	return tx
