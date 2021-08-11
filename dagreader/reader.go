@@ -7,13 +7,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Fantom-foundation/go-opera/ethclient"
 	"github.com/Fantom-foundation/go-opera/inter"
 	"github.com/Fantom-foundation/go-opera/logger"
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/ethclient"
 )
 
 type Reader struct {
@@ -135,16 +135,14 @@ func (s *Reader) readEvents(n *big.Int, client *ethclient.Client) (err error) {
 
 	atropos := hash.Event(blk.Hash())
 	s.Log.Info("new atropos", "id", atropos)
-	e, err := client.GetEventPayload(ctx, atropos.String(), true)
+	e, err := client.GetEvent(ctx, atropos.String(), true)
 	if err != nil {
 		panic(err)
 	}
 
-	data, _ := e.MarshalJSON()
-	fmt.Println(string(data))
+	fmt.Printf("> %+v\n", e)
 
 	// TODO: extract all the events
-	//
 
 	return
 }
