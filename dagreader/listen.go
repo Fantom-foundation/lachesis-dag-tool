@@ -31,15 +31,14 @@ var (
 func actListen(ctx context.Context, cli *cli.Context) error {
 	dst := cli.GlobalString(neo4jUrlFlag.Name)
 	log.Info("open DB", "path", dst)
-	disk, err := neo4j.New(dst)
+	db, err := neo4j.New(dst)
 	if err != nil {
 		return err
 	}
-	db := neo4j.NewCachedDb(disk)
-	defer db.Close()
+	
+	buffer := NewEventsBuffer(db)
+	defer buffer.Close()
 
-	store := newStore(db, true)
-	defer store.Close()
 
 	// TODO: read from db
 	var fromBlock idx.Block = 2 // skip genesis
@@ -53,7 +52,7 @@ func actListen(ctx context.Context, cli *cli.Context) error {
 		select {
 		case e := <-reader.Events():
 			log.Info("store.Save(e)", "id", e.ID())
-			store.Save(e)
+			buffer.Save(e)
 		case <-ctx.Done():
 			return nil
 		}
