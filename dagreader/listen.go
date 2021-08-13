@@ -42,7 +42,7 @@ func actListen(ctx context.Context, cli *cli.Context) error {
 	defer store.Close()
 
 	// TODO: read from db
-	var fromBlock idx.Block = 2
+	var fromBlock idx.Block = 2 // skip genesis
 
 	rpc := cli.String(rpcFlag.Name)
 	log.Info("connect to API", "url", rpc)
@@ -52,6 +52,7 @@ func actListen(ctx context.Context, cli *cli.Context) error {
 	for {
 		select {
 		case e := <-reader.Events():
+			log.Info("store.Save(e)", "id", e.ID())
 			store.Save(e)
 		case <-ctx.Done():
 			return nil

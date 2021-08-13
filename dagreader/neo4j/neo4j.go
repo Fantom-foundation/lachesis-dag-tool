@@ -212,7 +212,7 @@ func (s *Db) getEvents(epoch idx.Epoch) <-chan *storedEvent {
 
 				events <- &storedEvent{
 					OriginHash: e,
-					Event:      header,
+					EventI:     header,
 				}
 			}
 			return nil, nil

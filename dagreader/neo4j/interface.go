@@ -6,7 +6,7 @@ import (
 )
 
 type ToStore interface {
-	Payload() *inter.Event
+	Payload() inter.EventI
 	Done()
 }
 
@@ -14,5 +14,5 @@ type ToStore interface {
 // because EventHeaderData.Hash() differs as not all the fields are stored.
 type storedEvent struct {
 	OriginHash hash.Event
-	*inter.Event
+	inter.EventI
 }

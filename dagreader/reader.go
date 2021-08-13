@@ -18,7 +18,7 @@ import (
 
 type Reader struct {
 	url    string
-	output chan *inter.Event
+	output chan inter.EventI
 
 	done chan struct{}
 	work sync.WaitGroup
@@ -29,6 +29,7 @@ type Reader struct {
 func NewReader(url string, start idx.Block) *Reader {
 	s := &Reader{
 		url:      url,
+		output:   make(chan inter.EventI, 10),
 		done:     make(chan struct{}),
 		Instance: logger.MakeInstance(),
 	}
@@ -44,22 +45,19 @@ func (s *Reader) Close() {
 		return
 	}
 	close(s.done)
-	s.done = nil
-
 	s.work.Wait()
+	s.done = nil
 }
 
-func (s *Reader) Events() <-chan *inter.Event {
+func (s *Reader) Events() <-chan inter.EventI {
 	return s.output
 }
 
 func (s *Reader) background(start idx.Block) {
 	defer s.work.Done()
+	defer close(s.output)
 	s.Log.Info("started")
 	defer s.Log.Info("stopped")
-
-	s.output = make(chan *inter.Event, 10)
-	defer close(s.output)
 
 	var (
 		client   *ethclient.Client
@@ -83,9 +81,16 @@ func (s *Reader) background(start idx.Block) {
 	}
 	defer disconnect()
 
+	was := make(map[hash.Event]struct{})
+
 	for {
 		// client connect
 		for client == nil {
+			select {
+			case <-s.done:
+				return
+			default:
+			}
 			client, err = s.connect()
 			if err != nil {
 				disconnect()
@@ -101,16 +106,17 @@ func (s *Reader) background(start idx.Block) {
 		}
 
 		for curBlock.Cmp(maxBlock) <= 0 {
-			err = s.readEvents(curBlock, client)
+			was, err = s.readEvents(curBlock, client, was)
 			if err != nil {
 				disconnect()
 				delay()
-				continue
+				break
 			}
 			curBlock.Add(curBlock, big.NewInt(1))
 		}
 
-		// wait for nex task
+		// wait for next task
+		s.Log.Warn("wait for next task")
 		select {
 		case b := <-headers:
 			if maxBlock.Cmp(b.Number) < 0 {
@@ -122,27 +128,53 @@ func (s *Reader) background(start idx.Block) {
 	}
 }
 
-func (s *Reader) readEvents(n *big.Int, client *ethclient.Client) (err error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
+func (s *Reader) readEvents(n *big.Int, client *ethclient.Client, was0 map[hash.Event]struct{}) (was1 map[hash.Event]struct{}, err error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	blk, err := client.BlockByNumber(ctx, n)
+	cancel()
 	if err != nil {
 		s.Log.Error("new block", "block", n, "err", err)
 		return
 	}
-	s.Log.Info("new block", "block", n)
-
 	atropos := hash.Event(blk.Hash())
-	s.Log.Info("new atropos", "id", atropos)
-	e, err := client.GetEvent(ctx, atropos.String(), true)
-	if err != nil {
-		panic(err)
+	s.Log.Info("new block", "block", n, "atropos", atropos)
+
+	was1 = make(map[hash.Event]struct{})
+	queue := make([]hash.Event, 0, 100)
+	queue = append(queue, atropos)
+
+	for len(queue) > 0 {
+		e := queue[len(queue)-1]
+		queue = queue[:len(queue)-1]
+
+		var event inter.EventI
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		event, err = client.GetEvent(ctx, e)
+		cancel()
+		if err != nil {
+			return
+		}
+		s.Log.Info("new event", "block", n, "id", event.ID())
+		select {
+		case s.output <- event:
+			was1[event.ID()] = struct{}{}
+		case <-s.done:
+			err = fmt.Errorf("interrupted")
+			return
+		}
+
+		for _, p := range event.Parents() {
+			if _, was := was0[p]; was {
+				continue
+			}
+			if _, was := was1[p]; was {
+				continue
+			}
+
+			s.Log.Info("new event queued", "block", n, "id", event.ID(), "parent", p)
+			queue = append(queue, p)
+		}
 	}
-
-	fmt.Printf("> %+v\n", e)
-
-	// TODO: extract all the events
 
 	return
 }

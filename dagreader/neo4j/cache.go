@@ -13,7 +13,7 @@ import (
 type CachedDb struct {
 	db        *Db
 	currEpoch idx.Epoch
-	inmem     map[idx.Epoch]map[hash.Event]*inter.Event
+	inmem     map[idx.Epoch]map[hash.Event]inter.EventI
 
 	busy sync.WaitGroup
 	sync.RWMutex
@@ -23,13 +23,13 @@ func NewCachedDb(db *Db) *CachedDb {
 	s := &CachedDb{
 		db:        db,
 		currEpoch: db.GetEpoch(),
-		inmem:     make(map[idx.Epoch]map[hash.Event]*inter.Event, 3),
+		inmem:     make(map[idx.Epoch]map[hash.Event]inter.EventI, 3),
 	}
 
 	log.Info("Init neo4j cache", "begin", time.Now(), "epoch", s.currEpoch)
-	ee := make(map[hash.Event]*inter.Event, 5000)
+	ee := make(map[hash.Event]inter.EventI, 5000)
 	for e := range db.getEvents(s.currEpoch) {
-		ee[e.OriginHash] = e.Event
+		ee[e.OriginHash] = e.EventI
 		log.Debug("already exists", "event", e.OriginHash, "parents", e.Parents)
 	}
 	s.inmem[s.currEpoch] = ee
@@ -59,7 +59,7 @@ func (s *CachedDb) HasEvent(e hash.Event) bool {
 	return has
 }
 
-func (s *CachedDb) GetEvent(e hash.Event) *inter.Event {
+func (s *CachedDb) GetEvent(e hash.Event) inter.EventI {
 	s.RLock()
 	defer s.RUnlock()
 
@@ -91,7 +91,7 @@ func (s *CachedDb) Load(events <-chan ToStore) {
 		s.Lock()
 		ee, exists := s.inmem[epoch]
 		if !exists {
-			ee = make(map[hash.Event]*inter.Event, 5000)
+			ee = make(map[hash.Event]inter.EventI, 5000)
 			s.inmem[epoch] = ee
 			s.currEpoch = epoch
 			updateEpoch = func() {
@@ -116,11 +116,11 @@ func (s *CachedDb) GetEpoch() idx.Epoch {
 }
 
 type asyncTask struct {
-	event  *inter.Event
+	event  inter.EventI
 	onDone func()
 }
 
-func (t *asyncTask) Payload() *inter.Event {
+func (t *asyncTask) Payload() inter.EventI {
 	return t.event
 }
 
