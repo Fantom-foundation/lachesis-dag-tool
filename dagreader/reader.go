@@ -27,37 +27,39 @@ type Reader struct {
 }
 
 func NewReader(url string, start idx.Block) *Reader {
-	s := &Reader{
+	r := &Reader{
 		url:      url,
 		output:   make(chan inter.EventI, 10),
 		done:     make(chan struct{}),
 		Instance: logger.MakeInstance(),
 	}
 
-	s.work.Add(1)
-	go s.background(start)
+	r.SetName("reader")
 
-	return s
+	r.work.Add(1)
+	go r.background(start)
+
+	return r
 }
 
-func (s *Reader) Close() {
-	if s.done == nil {
+func (r *Reader) Close() {
+	if r.done == nil {
 		return
 	}
-	close(s.done)
-	s.work.Wait()
-	s.done = nil
+	close(r.done)
+	r.work.Wait()
+	r.done = nil
 }
 
 func (s *Reader) Events() <-chan inter.EventI {
 	return s.output
 }
 
-func (s *Reader) background(start idx.Block) {
-	defer s.work.Done()
-	defer close(s.output)
-	s.Log.Info("started")
-	defer s.Log.Info("stopped")
+func (r *Reader) background(start idx.Block) {
+	defer r.work.Done()
+	defer close(r.output)
+	r.Log.Info("started")
+	defer r.Log.Info("stopped")
 
 	var (
 		client   *ethclient.Client
@@ -76,7 +78,7 @@ func (s *Reader) background(start idx.Block) {
 		if client != nil {
 			client.Close()
 			client = nil
-			s.Log.Error("disonnect from", "url", s.url)
+			r.Log.Error("disonnect from", "url", r.url)
 		}
 	}
 	defer disconnect()
@@ -87,17 +89,17 @@ func (s *Reader) background(start idx.Block) {
 		// client connect
 		for client == nil {
 			select {
-			case <-s.done:
+			case <-r.done:
 				return
 			default:
 			}
-			client, err = s.connect()
+			client, err = r.connect()
 			if err != nil {
 				disconnect()
 				delay()
 				continue
 			}
-			sbscr, err = s.subscribe(client, headers)
+			sbscr, err = r.subscribe(client, headers)
 			if err != nil {
 				disconnect()
 				delay()
@@ -106,7 +108,7 @@ func (s *Reader) background(start idx.Block) {
 		}
 
 		for curBlock.Cmp(maxBlock) <= 0 {
-			was, err = s.readEvents(curBlock, client, was)
+			was, err = r.readEvents(curBlock, client, was)
 			if err != nil {
 				disconnect()
 				delay()
@@ -115,14 +117,13 @@ func (s *Reader) background(start idx.Block) {
 			curBlock.Add(curBlock, big.NewInt(1))
 		}
 
-		// wait for next task
-		s.Log.Warn("wait for next task")
+		r.Log.Warn("wait for next block")
 		select {
 		case b := <-headers:
 			if maxBlock.Cmp(b.Number) < 0 {
 				maxBlock.Set(b.Number)
 			}
-		case <-s.done:
+		case <-r.done:
 			return
 		}
 	}
@@ -133,11 +134,11 @@ func (s *Reader) readEvents(n *big.Int, client *ethclient.Client, was0 map[hash.
 	blk, err := client.BlockByNumber(ctx, n)
 	cancel()
 	if err != nil {
-		s.Log.Error("new block", "block", n, "err", err)
+		s.Log.Error("detected block", "n", n, "err", err)
 		return
 	}
 	atropos := hash.Event(blk.Hash())
-	s.Log.Info("new block", "block", n, "atropos", atropos)
+	s.Log.Info("detected block", "n", n, "atropos", atropos)
 
 	was1 = make(map[hash.Event]struct{})
 	queue := make([]hash.Event, 0, 100)
@@ -154,7 +155,7 @@ func (s *Reader) readEvents(n *big.Int, client *ethclient.Client, was0 map[hash.
 		if err != nil {
 			return
 		}
-		s.Log.Info("new event", "block", n, "id", event.ID())
+		s.Log.Info("got event", "block", n, "id", event.ID())
 		select {
 		case s.output <- event:
 			was1[event.ID()] = struct{}{}
@@ -171,7 +172,7 @@ func (s *Reader) readEvents(n *big.Int, client *ethclient.Client, was0 map[hash.
 				continue
 			}
 
-			s.Log.Info("new event queued", "block", n, "id", event.ID(), "parent", p)
+			s.Log.Debug("detected event", "id", event.ID(), "parent", p, "block", n)
 			queue = append(queue, p)
 		}
 	}

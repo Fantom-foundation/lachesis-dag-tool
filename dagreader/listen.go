@@ -29,16 +29,16 @@ var (
 )
 
 func actListen(ctx context.Context, cli *cli.Context) error {
-	dst := cli.GlobalString(neo4jUrlFlag.Name)
-	log.Info("open DB", "path", dst)
-	db, err := neo4j.New(dst)
+	disk := cli.GlobalString(neo4jUrlFlag.Name)
+	log.Info("open DB", "path", disk)
+	db, err := neo4j.New(disk)
 	if err != nil {
 		return err
 	}
-	
-	buffer := NewEventsBuffer(db)
-	defer buffer.Close()
+	defer db.Close()
 
+	buffer := NewEventsBuffer(db, ctx.Done())
+	defer buffer.Close()
 
 	// TODO: read from db
 	var fromBlock idx.Block = 2 // skip genesis
@@ -51,8 +51,8 @@ func actListen(ctx context.Context, cli *cli.Context) error {
 	for {
 		select {
 		case e := <-reader.Events():
-			log.Info("store.Save(e)", "id", e.ID())
-			buffer.Save(e)
+			log.Info("push event", "id", e.ID())
+			buffer.Push(e)
 		case <-ctx.Done():
 			return nil
 		}

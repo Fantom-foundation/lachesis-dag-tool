@@ -7,12 +7,15 @@ import (
 
 	"github.com/Fantom-foundation/go-opera/inter"
 	"github.com/Fantom-foundation/lachesis-base/hash"
+	"github.com/Fantom-foundation/lachesis-base/inter/dag"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
 	lru "github.com/hashicorp/golang-lru"
 	"github.com/neo4j/neo4j-go-driver/neo4j"
 	"github.com/paulbellamy/ratecounter"
+
+	"github.com/Fantom-foundation/lachesis-dag-tool/dagreader/internal"
 )
 
 const (
@@ -102,11 +105,9 @@ func (s *Db) HasEvent(e hash.Event) bool {
 	}
 	defer session.Close()
 
-	id := eventID(e)
-
 	res, err := session.ReadTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
 		cursor, err := search(ctx, `MATCH (e:Event %s) RETURN e`, fields{
-			"id": id,
+			"id": eventID(e),
 		})
 		if err != nil {
 			panic(err)
@@ -124,7 +125,7 @@ func (s *Db) HasEvent(e hash.Event) bool {
 
 // GetEvent returns event header.
 // Note: returned event has incorrect .Hash() because not all the fields are stored.
-func (s *Db) GetEvent(e hash.Event) *inter.Event {
+func (s *Db) GetEvent(e hash.Event) dag.Event {
 	// Get event from LRU cache first.
 	if ev, ok := s.cache.EventsHeaders.Get(e); ok {
 		return ev.(*inter.Event)
@@ -249,7 +250,7 @@ func (s *Db) getParents(session neo4j.Session, e hash.Event) hash.Events {
 }
 
 // Load data from events chain.
-func (s *Db) Load(events <-chan ToStore) {
+func (s *Db) Load(events <-chan internal.ToStore) {
 	s.busy.Add(1)
 	defer s.busy.Done()
 
@@ -259,13 +260,13 @@ func (s *Db) Load(events <-chan ToStore) {
 	}
 	defer session.Close()
 
-	parents := make(chan ToStore, 10)
+	parents := make(chan internal.ToStore, 10)
 	defer close(parents)
 
 	go s.loadParents(parents)
 
 	for task := range events {
-		event := task.Payload()
+		event := task.Event()
 		_, err = session.WriteTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
 			defer ctx.Close()
 
@@ -286,7 +287,7 @@ func (s *Db) Load(events <-chan ToStore) {
 	}
 }
 
-func (s *Db) loadParents(events <-chan ToStore) {
+func (s *Db) loadParents(events <-chan internal.ToStore) {
 	s.busy.Add(1)
 	defer s.busy.Done()
 
@@ -305,7 +306,7 @@ func (s *Db) loadParents(events <-chan ToStore) {
 	)
 
 	for task := range events {
-		event := task.Payload()
+		event := task.Event()
 		e := event.ID()
 		id := eventID(e)
 		_, err = session.WriteTransaction(func(ctx neo4j.Transaction) (interface{}, error) {

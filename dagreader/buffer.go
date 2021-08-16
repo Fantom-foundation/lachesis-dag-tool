@@ -1,9 +1,9 @@
 package main
 
 import (
+	"fmt"
 	"sync"
 
-	"github.com/Fantom-foundation/go-opera/inter"
 	"github.com/Fantom-foundation/go-opera/logger"
 	"github.com/Fantom-foundation/lachesis-base/gossip/dagordering"
 	"github.com/Fantom-foundation/lachesis-base/hash"
@@ -11,29 +11,35 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/utils/cachescale"
 	"github.com/syndtr/goleveldb/leveldb/opt"
+
+	"github.com/Fantom-foundation/lachesis-dag-tool/dagreader/internal"
 )
 
 type EventsBuffer struct {
-	db        Db
+	db        internal.Db
 	currEpoch idx.Epoch
 	inmem     map[idx.Epoch]map[hash.Event]dag.Event
 
 	buffer *dagordering.EventsBuffer
 
-	busy sync.WaitGroup
+	output chan internal.ToStore
+	busy   sync.WaitGroup
 	sync.RWMutex
 
 	logger.Instance
 }
 
-func NewEventsBuffer(db Db) *EventsBuffer {
+func NewEventsBuffer(db internal.Db, done <-chan struct{}) *EventsBuffer {
 	s := &EventsBuffer{
 		db:        db,
 		currEpoch: db.GetEpoch(),
 		inmem:     make(map[idx.Epoch]map[hash.Event]dag.Event, 3),
+		output:    make(chan internal.ToStore, 10),
 	}
 
 	s.inmem[s.currEpoch] = make(map[hash.Event]dag.Event, 5000)
+
+	go db.Load(s.output)
 
 	s.buffer = dagordering.New(dag.Metric{
 		Num:  3000,
@@ -53,12 +59,16 @@ func NewEventsBuffer(db Db) *EventsBuffer {
 				delete(s.inmem, epoch-2)
 			}
 
-			err := s.db.Load(e)
-			if err != nil {
-				return err
+			select {
+			case s.output <- &asyncTask{
+				event: e,
+				role:  "TODO",
+			}:
+				s.inmem[epoch][id] = e
+			case <-done:
+				return fmt.Errorf("Interrupted")
 			}
 
-			s.inmem[epoch][id] = e
 			return nil
 		},
 
@@ -96,10 +106,15 @@ func NewEventsBuffer(db Db) *EventsBuffer {
 	return s
 }
 
+func (s *EventsBuffer) Push(e dag.Event) {
+	s.buffer.PushEvent(e, "")
+}
+
 func (s *EventsBuffer) Close() {
 	s.Lock()
 	defer s.Unlock()
 
+	close(s.output)
 	s.buffer.Clear()
 }
 
@@ -110,13 +125,19 @@ func (s *EventsBuffer) GetEpoch() idx.Epoch {
 	return s.currEpoch
 }
 
+// asyncTask implements ToStore interface
 type asyncTask struct {
-	event  inter.EventI
+	event  dag.Event
+	role   string
 	onDone func()
 }
 
-func (t *asyncTask) Payload() inter.EventI {
+func (t *asyncTask) Event() dag.Event {
 	return t.event
+}
+
+func (t *asyncTask) Role() string {
+	return t.role
 }
 
 func (t *asyncTask) Done() {
