@@ -14,11 +14,13 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/core/types"
+
+	"github.com/Fantom-foundation/lachesis-dag-tool/dagreader/internal"
 )
 
 type Reader struct {
 	url    string
-	output chan inter.EventI
+	output chan internal.ToStore
 
 	done chan struct{}
 	work sync.WaitGroup
@@ -29,7 +31,7 @@ type Reader struct {
 func NewReader(url string, start idx.Block) *Reader {
 	r := &Reader{
 		url:      url,
-		output:   make(chan inter.EventI, 10),
+		output:   make(chan internal.ToStore, 10),
 		done:     make(chan struct{}),
 		Instance: logger.MakeInstance(),
 	}
@@ -51,7 +53,7 @@ func (r *Reader) Close() {
 	r.done = nil
 }
 
-func (s *Reader) Events() <-chan inter.EventI {
+func (s *Reader) Events() <-chan internal.ToStore {
 	return s.output
 }
 
@@ -157,7 +159,11 @@ func (s *Reader) readEvents(n *big.Int, client *ethclient.Client, was0 map[hash.
 		}
 		s.Log.Info("got event", "block", n, "id", event.ID())
 		select {
-		case s.output <- event:
+		case s.output <- &asyncTask{
+			block: idx.Block(n.Uint64()),
+			event: event,
+			role:  "TODO",
+		}:
 			was1[event.ID()] = struct{}{}
 		case <-s.done:
 			err = fmt.Errorf("interrupted")

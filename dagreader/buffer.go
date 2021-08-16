@@ -18,7 +18,11 @@ import (
 type EventsBuffer struct {
 	db        internal.Db
 	currEpoch idx.Epoch
-	inmem     map[idx.Epoch]map[hash.Event]dag.Event
+
+	cache struct {
+		infos  map[hash.Event]internal.ToStore
+		events map[idx.Epoch]map[hash.Event]dag.Event
+	}
 
 	buffer *dagordering.EventsBuffer
 
@@ -33,11 +37,12 @@ func NewEventsBuffer(db internal.Db, done <-chan struct{}) *EventsBuffer {
 	s := &EventsBuffer{
 		db:        db,
 		currEpoch: db.GetEpoch(),
-		inmem:     make(map[idx.Epoch]map[hash.Event]dag.Event, 3),
 		output:    make(chan internal.ToStore, 10),
 	}
 
-	s.inmem[s.currEpoch] = make(map[hash.Event]dag.Event, 5000)
+	s.cache.infos = make(map[hash.Event]internal.ToStore)
+	s.cache.events = make(map[idx.Epoch]map[hash.Event]dag.Event, 3)
+	s.cache.events[s.currEpoch] = make(map[hash.Event]dag.Event, 5000)
 
 	go db.Load(s.output)
 
@@ -51,12 +56,12 @@ func NewEventsBuffer(db internal.Db, done <-chan struct{}) *EventsBuffer {
 
 			id := e.ID()
 			epoch := id.Epoch()
-			ee, exists := s.inmem[epoch]
+			ee, exists := s.cache.events[epoch]
 			if !exists {
 				ee = make(map[hash.Event]dag.Event, 5000)
-				s.inmem[epoch] = ee
+				s.cache.events[epoch] = ee
 				s.currEpoch = epoch
-				delete(s.inmem, epoch-2)
+				delete(s.cache.events, epoch-2)
 			}
 
 			select {
@@ -64,7 +69,7 @@ func NewEventsBuffer(db internal.Db, done <-chan struct{}) *EventsBuffer {
 				event: e,
 				role:  "TODO",
 			}:
-				s.inmem[epoch][id] = e
+				s.cache.events[epoch][id] = e
 			case <-done:
 				return fmt.Errorf("Interrupted")
 			}
@@ -76,7 +81,7 @@ func NewEventsBuffer(db internal.Db, done <-chan struct{}) *EventsBuffer {
 			s.RLock()
 			defer s.RUnlock()
 
-			ee, exists := s.inmem[e.Epoch()]
+			ee, exists := s.cache.events[e.Epoch()]
 			if !exists {
 				return false
 			}
@@ -88,7 +93,7 @@ func NewEventsBuffer(db internal.Db, done <-chan struct{}) *EventsBuffer {
 			s.RLock()
 			defer s.RUnlock()
 
-			ee, exists := s.inmem[e.Epoch()]
+			ee, exists := s.cache.events[e.Epoch()]
 			if !exists {
 				return nil
 			}
@@ -106,8 +111,11 @@ func NewEventsBuffer(db internal.Db, done <-chan struct{}) *EventsBuffer {
 	return s
 }
 
-func (s *EventsBuffer) Push(e dag.Event) {
-	s.buffer.PushEvent(e, "")
+func (s *EventsBuffer) Push(e internal.ToStore) {
+	s.Lock()
+	defer s.Unlock()
+
+	s.buffer.PushEvent(e.Event(), "")
 }
 
 func (s *EventsBuffer) Close() {
@@ -127,9 +135,14 @@ func (s *EventsBuffer) GetEpoch() idx.Epoch {
 
 // asyncTask implements ToStore interface
 type asyncTask struct {
+	block  idx.Block
 	event  dag.Event
 	role   string
 	onDone func()
+}
+
+func (t *asyncTask) Block() idx.Block {
+	return t.block
 }
 
 func (t *asyncTask) Event() dag.Event {
