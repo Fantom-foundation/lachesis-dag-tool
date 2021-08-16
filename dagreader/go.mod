@@ -17,7 +17,6 @@ require (
 
 replace (
 	github.com/Fantom-foundation/go-opera => ../../go-opera
-	// github.com/ethereum/go-ethereum => github.com/Fantom-foundation/go-ethereum v1.9.7-0.20210712220008-ef39bedfbb55
-	github.com/ethereum/go-ethereum => ../../go-ethereum
+	github.com/ethereum/go-ethereum => github.com/Fantom-foundation/go-ethereum v1.9.7-0.20210817093144-c7491520e043
 	gopkg.in/urfave/cli.v1 => github.com/urfave/cli v1.20.0
 )
