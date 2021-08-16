@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Fantom-foundation/go-opera/ethclient"
+	"github.com/Fantom-foundation/go-opera/ftmclient"
 	"github.com/Fantom-foundation/go-opera/inter"
 	"github.com/Fantom-foundation/go-opera/logger"
 	"github.com/Fantom-foundation/lachesis-base/hash"
@@ -64,7 +64,7 @@ func (r *Reader) background(start idx.Block) {
 	defer r.Log.Info("stopped")
 
 	var (
-		client   *ethclient.Client
+		client   *ftmclient.Client
 		err      error
 		curBlock = big.NewInt(int64(start))
 		maxBlock = big.NewInt(0)
@@ -131,7 +131,7 @@ func (r *Reader) background(start idx.Block) {
 	}
 }
 
-func (s *Reader) readEvents(n *big.Int, client *ethclient.Client, was0 map[hash.Event]struct{}) (was1 map[hash.Event]struct{}, err error) {
+func (s *Reader) readEvents(n *big.Int, client *ftmclient.Client, was0 map[hash.Event]struct{}) (was1 map[hash.Event]struct{}, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	blk, err := client.BlockByNumber(ctx, n)
 	cancel()
@@ -186,8 +186,8 @@ func (s *Reader) readEvents(n *big.Int, client *ethclient.Client, was0 map[hash.
 	return
 }
 
-func (s *Reader) connect() (*ethclient.Client, error) {
-	client, err := ethclient.Dial(s.url)
+func (s *Reader) connect() (*ftmclient.Client, error) {
+	client, err := ftmclient.Dial(s.url)
 	if err != nil {
 		s.Log.Error("connect to", "url", s.url, "err", err)
 		return nil, err
@@ -196,7 +196,7 @@ func (s *Reader) connect() (*ethclient.Client, error) {
 	return client, nil
 }
 
-func (s *Reader) subscribe(client *ethclient.Client, headers chan *types.Header) (sbscr ethereum.Subscription, err error) {
+func (s *Reader) subscribe(client *ftmclient.Client, headers chan *types.Header) (sbscr ethereum.Subscription, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
