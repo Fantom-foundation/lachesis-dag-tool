@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Fantom-foundation/go-opera/inter"
+	"github.com/Fantom-foundation/go-opera/logger"
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/dag"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
@@ -32,6 +33,8 @@ type Db struct {
 	cache struct {
 		EventsHeaders *lru.Cache
 	}
+
+	logger.Instance
 }
 
 func New(dbUrl string) (*Db, error) {
@@ -43,8 +46,10 @@ func New(dbUrl string) (*Db, error) {
 	}
 
 	s := &Db{
-		drv: db,
+		drv:      db,
+		Instance: logger.MakeInstance(),
 	}
+	s.SetName("neo4j")
 
 	s.busy.Add(1)
 	defer s.busy.Done()
@@ -275,7 +280,7 @@ func (s *Db) Load(events <-chan *internal.EventInfo) {
 			}
 
 			data := marshal(info)
-			log.Debug("<<<", "event", info.Event.ID(), "data", data)
+			s.Log.Info("<<< event", "id", info.Event.ID(), "data", data)
 			err = exec(ctx, "CREATE (e:Event %s)", data)
 			if err != nil {
 				panic(err)
@@ -339,7 +344,7 @@ func (s *Db) loadParents(events <-chan *internal.EventInfo) {
 		total++
 		last = event.ID()
 		if time.Since(reported) >= statsReportLimit {
-			log.Info("<<<",
+			s.Log.Info("<<<",
 				"last", last,
 				"rate", counter.Rate()/60,
 				"total", total,
@@ -348,7 +353,7 @@ func (s *Db) loadParents(events <-chan *internal.EventInfo) {
 		}
 	}
 
-	log.Info("Total imported events",
+	s.Log.Info("Total imported events",
 		"last", last,
 		"rate", total*1000/time.Since(start).Milliseconds(),
 		"total", total,
