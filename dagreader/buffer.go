@@ -19,14 +19,14 @@ type EventsBuffer struct {
 	db        internal.Db
 	currEpoch idx.Epoch
 
-	cache struct {
-		infos  map[hash.Event]internal.ToStore
-		events map[idx.Epoch]map[hash.Event]dag.Event
+	events struct {
+		info      map[hash.Event]*internal.EventInfo
+		processed map[idx.Epoch]map[hash.Event]dag.Event
 	}
 
-	buffer *dagordering.EventsBuffer
+	ordering *dagordering.EventsBuffer
 
-	output chan internal.ToStore
+	output chan *internal.EventInfo
 	busy   sync.WaitGroup
 	sync.RWMutex
 
@@ -34,20 +34,22 @@ type EventsBuffer struct {
 }
 
 func NewEventsBuffer(db internal.Db, done <-chan struct{}) *EventsBuffer {
+	const count = 3000
+
 	s := &EventsBuffer{
 		db:        db,
 		currEpoch: db.GetEpoch(),
-		output:    make(chan internal.ToStore, 10),
+		output:    make(chan *internal.EventInfo, 10),
 	}
 
-	s.cache.infos = make(map[hash.Event]internal.ToStore)
-	s.cache.events = make(map[idx.Epoch]map[hash.Event]dag.Event, 3)
-	s.cache.events[s.currEpoch] = make(map[hash.Event]dag.Event, 5000)
+	s.events.processed = make(map[idx.Epoch]map[hash.Event]dag.Event, 3)
+	s.events.processed[s.currEpoch] = make(map[hash.Event]dag.Event, count)
+	s.events.info = make(map[hash.Event]*internal.EventInfo, count)
 
 	go db.Load(s.output)
 
-	s.buffer = dagordering.New(dag.Metric{
-		Num:  3000,
+	s.ordering = dagordering.New(dag.Metric{
+		Num:  count,
 		Size: cachescale.Identity.U64(10 * opt.MiB),
 	}, dagordering.Callback{
 		Process: func(e dag.Event) error {
@@ -56,20 +58,20 @@ func NewEventsBuffer(db internal.Db, done <-chan struct{}) *EventsBuffer {
 
 			id := e.ID()
 			epoch := id.Epoch()
-			ee, exists := s.cache.events[epoch]
-			if !exists {
-				ee = make(map[hash.Event]dag.Event, 5000)
-				s.cache.events[epoch] = ee
+			info := s.events.info[id]
+			if info == nil {
+				panic("event info not found")
+			}
+			if _, exists := s.events.processed[epoch]; !exists {
+				s.events.processed[epoch] = make(map[hash.Event]dag.Event, count)
+				delete(s.events.processed, epoch-2)
 				s.currEpoch = epoch
-				delete(s.cache.events, epoch-2)
 			}
 
 			select {
-			case s.output <- &asyncTask{
-				event: e,
-				role:  "TODO",
-			}:
-				s.cache.events[epoch][id] = e
+			case s.output <- info:
+				s.events.processed[epoch][id] = e
+				delete(s.events.info, id)
 			case <-done:
 				return fmt.Errorf("Interrupted")
 			}
@@ -81,7 +83,7 @@ func NewEventsBuffer(db internal.Db, done <-chan struct{}) *EventsBuffer {
 			s.RLock()
 			defer s.RUnlock()
 
-			ee, exists := s.cache.events[e.Epoch()]
+			ee, exists := s.events.processed[e.Epoch()]
 			if !exists {
 				return false
 			}
@@ -93,7 +95,7 @@ func NewEventsBuffer(db internal.Db, done <-chan struct{}) *EventsBuffer {
 			s.RLock()
 			defer s.RUnlock()
 
-			ee, exists := s.cache.events[e.Epoch()]
+			ee, exists := s.events.processed[e.Epoch()]
 			if !exists {
 				return nil
 			}
@@ -111,11 +113,12 @@ func NewEventsBuffer(db internal.Db, done <-chan struct{}) *EventsBuffer {
 	return s
 }
 
-func (s *EventsBuffer) Push(e internal.ToStore) {
+func (s *EventsBuffer) Push(e *internal.EventInfo) {
 	s.Lock()
 	defer s.Unlock()
 
-	s.buffer.PushEvent(e.Event(), "")
+	s.events.info[e.Event.ID()] = e
+	s.ordering.PushEvent(e.Event, "")
 }
 
 func (s *EventsBuffer) Close() {
@@ -123,7 +126,7 @@ func (s *EventsBuffer) Close() {
 	defer s.Unlock()
 
 	close(s.output)
-	s.buffer.Clear()
+	s.ordering.Clear()
 }
 
 func (s *EventsBuffer) GetEpoch() idx.Epoch {
@@ -131,30 +134,4 @@ func (s *EventsBuffer) GetEpoch() idx.Epoch {
 	defer s.RUnlock()
 
 	return s.currEpoch
-}
-
-// asyncTask implements ToStore interface
-type asyncTask struct {
-	block  idx.Block
-	event  dag.Event
-	role   string
-	onDone func()
-}
-
-func (t *asyncTask) Block() idx.Block {
-	return t.block
-}
-
-func (t *asyncTask) Event() dag.Event {
-	return t.event
-}
-
-func (t *asyncTask) Role() string {
-	return t.role
-}
-
-func (t *asyncTask) Done() {
-	if t.onDone != nil {
-		t.onDone()
-	}
 }

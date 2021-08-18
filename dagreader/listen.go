@@ -51,7 +51,7 @@ func actListen(ctx context.Context, cli *cli.Context) error {
 	for {
 		select {
 		case e := <-reader.Events():
-			log.Info("push event", "id", e.Event().ID())
+			log.Info("push event", "id", e.Event.ID())
 			buffer.Push(e)
 		case <-ctx.Done():
 			return nil

@@ -249,8 +249,8 @@ func (s *Db) getParents(session neo4j.Session, e hash.Event) hash.Events {
 	return parents
 }
 
-// Load data from events chain.
-func (s *Db) Load(events <-chan internal.ToStore) {
+// Load data from input chain.
+func (s *Db) Load(events <-chan *internal.EventInfo) {
 	s.busy.Add(1)
 	defer s.busy.Done()
 
@@ -260,18 +260,16 @@ func (s *Db) Load(events <-chan internal.ToStore) {
 	}
 	defer session.Close()
 
-	parents := make(chan internal.ToStore, 10)
+	parents := make(chan *internal.EventInfo, 10)
 	defer close(parents)
-
 	go s.loadParents(parents)
 
-	for task := range events {
-		event := task.Event()
+	for info := range events {
 		_, err = session.WriteTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
 			defer ctx.Close()
 
-			data := marshal(event)
-			log.Debug("<<<", "event", event.ID(), "data", data, "parents", event.Parents)
+			data := marshal(info)
+			log.Debug("<<<", "event", info.Event.ID(), "data", data)
 			err = exec(ctx, "CREATE (e:Event %s)", data)
 			if err != nil {
 				panic(err)
@@ -283,11 +281,11 @@ func (s *Db) Load(events <-chan internal.ToStore) {
 			ignoreFakeError(err)
 		}
 
-		parents <- task
+		parents <- info
 	}
 }
 
-func (s *Db) loadParents(events <-chan internal.ToStore) {
+func (s *Db) loadParents(events <-chan *internal.EventInfo) {
 	s.busy.Add(1)
 	defer s.busy.Done()
 
@@ -305,8 +303,8 @@ func (s *Db) loadParents(events <-chan internal.ToStore) {
 		last     hash.Event
 	)
 
-	for task := range events {
-		event := task.Event()
+	for info := range events {
+		event := info.Event
 		e := event.ID()
 		id := eventID(e)
 		_, err = session.WriteTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
@@ -329,7 +327,7 @@ func (s *Db) loadParents(events <-chan internal.ToStore) {
 		}
 
 		s.cache.EventsHeaders.Add(e, event)
-		task.Done()
+		info.Done()
 
 		counter.Incr(1)
 		total++

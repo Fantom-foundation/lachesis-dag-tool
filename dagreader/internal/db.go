@@ -10,12 +10,18 @@ type Db interface {
 	GetEpoch() idx.Epoch
 	HasEvent(e hash.Event) bool
 	GetEvent(e hash.Event) dag.Event
-	Load(events <-chan ToStore)
+	Load(events <-chan *EventInfo)
 }
 
-type ToStore interface {
-	Block() idx.Block
-	Event() dag.Event
-	Role() string
-	Done()
+type EventInfo struct {
+	Block  idx.Block
+	Event  dag.Event
+	Role   string
+	OnDone func()
+}
+
+func (e *EventInfo) Done() {
+	if e.OnDone != nil {
+		e.OnDone()
+	}
 }

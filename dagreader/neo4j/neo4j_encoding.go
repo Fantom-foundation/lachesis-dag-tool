@@ -6,7 +6,10 @@ import (
 
 	"github.com/Fantom-foundation/go-opera/inter"
 	"github.com/Fantom-foundation/lachesis-base/hash"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/neo4j/neo4j-go-driver/neo4j"
+
+	"github.com/Fantom-foundation/lachesis-dag-tool/dagreader/internal"
 )
 
 type fields map[string]interface{}
@@ -49,24 +52,35 @@ func valToString(v interface{}) string {
 	return string(bb)
 }
 
-// TODO: all the fields
 func marshal(x interface{}) fields {
-	switch e := x.(type) {
-	case *inter.Event:
+	switch v := x.(type) {
+	case *internal.EventInfo:
 		return fields{
-			"id":      e.ID().Hex(),
-			"creator": int64(e.Creator()),
+			"block":   uint64(v.Block),
+			"role":    v.Role,
+			"id":      eventID(v.Event.ID()),
+			"creator": int64(v.Event.Creator()),
 		}
 	default:
 		panic("unsupported type")
 	}
 }
 
-// TODO: all the fields
 func unmarshal(ff fields, x interface{}) {
-	switch x.(type) {
-	case *inter.Event:
-		// e.Creator = idx.StakerID(ff["creator"].(int64))
+	switch v := x.(type) {
+	case *internal.EventInfo:
+		v.Block = idx.Block(ff["block"].(uint64))
+		v.Role = ff["role"].(string)
+
+		event := &inter.MutableEventPayload{}
+		id := eventHash(ff["id"].(string))
+		event.SetEpoch(id.Epoch())
+		event.SetLamport(id.Lamport())
+		event.SetID(eventHashID(id))
+
+		event.SetCreator(idx.ValidatorID(ff["creator"].(int64)))
+
+		v.Event = &event.Build().Event
 		return
 	default:
 		panic("unsupported type")
@@ -80,4 +94,9 @@ func eventID(e hash.Event) string {
 
 func eventHash(id string) hash.Event {
 	return hash.HexToEventHash(id)
+}
+
+func eventHashID(e hash.Event) (r [24]byte) {
+	copy(r[:], e.Bytes()[8:])
+	return
 }

@@ -20,7 +20,7 @@ import (
 
 type Reader struct {
 	url    string
-	output chan internal.ToStore
+	output chan *internal.EventInfo
 
 	done chan struct{}
 	work sync.WaitGroup
@@ -31,7 +31,7 @@ type Reader struct {
 func NewReader(url string, start idx.Block) *Reader {
 	r := &Reader{
 		url:      url,
-		output:   make(chan internal.ToStore, 10),
+		output:   make(chan *internal.EventInfo, 10),
 		done:     make(chan struct{}),
 		Instance: logger.MakeInstance(),
 	}
@@ -53,7 +53,7 @@ func (r *Reader) Close() {
 	r.done = nil
 }
 
-func (s *Reader) Events() <-chan internal.ToStore {
+func (s *Reader) Events() <-chan *internal.EventInfo {
 	return s.output
 }
 
@@ -159,10 +159,10 @@ func (s *Reader) readEvents(n *big.Int, client *ftmclient.Client, was0 map[hash.
 		}
 		s.Log.Info("got event", "block", n, "id", event.ID())
 		select {
-		case s.output <- &asyncTask{
-			block: idx.Block(n.Uint64()),
-			event: event,
-			role:  "TODO",
+		case s.output <- &internal.EventInfo{
+			Block: idx.Block(n.Uint64()),
+			Role:  "TODO",
+			Event: event,
 		}:
 			was1[event.ID()] = struct{}{}
 		case <-s.done:

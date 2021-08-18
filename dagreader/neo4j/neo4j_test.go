@@ -5,16 +5,25 @@ import (
 
 	"github.com/Fantom-foundation/go-opera/inter"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Fantom-foundation/lachesis-dag-tool/dagreader/internal"
 )
 
-func TestMarshaling(t *testing.T) {
-	_ = require.New(t)
+func TestNeo4jMarshaling(t *testing.T) {
+	require := require.New(t)
 
-	header := new(inter.Event)
-	// header.Creator = 9
+	event := &inter.MutableEventPayload{}
+	event.SetCreator(3)
 
-	ff := marshal(header)
-	t.Log(ff)
+	info0 := &internal.EventInfo{
+		Block: 10,
+		Role:  "root",
+		Event: &event.Build().Event,
+	}
+	ff := marshal(info0)
 
-	unmarshal(ff, header)
+	info1 := &internal.EventInfo{}
+	unmarshal(ff, info1)
+
+	require.Equal(info0, info1)
 }
