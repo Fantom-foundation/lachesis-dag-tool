@@ -58,7 +58,7 @@ func New(dbUrl string) (*Db, error) {
 	DDLs := []string{
 		"CREATE CONSTRAINT ON (e:Event) ASSERT e.id IS UNIQUE",
 		"CREATE CONSTRAINT ON (b:Block) ASSERT b.id IS UNIQUE",
-		"CREATE (b:Block {id:'current',num:2})",
+		"CREATE (b:LastBlock {id:'current',num:2})",
 	}
 	for _, query := range DDLs {
 		_, err = session.WriteTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
@@ -264,9 +264,15 @@ func (s *Db) Load(events <-chan *internal.EventInfo) {
 	defer close(parents)
 	go s.loadParents(parents)
 
+	var lastBlock idx.Block = s.GetLastBlock()
 	for info := range events {
 		_, err = session.WriteTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
 			defer ctx.Close()
+
+			if lastBlock < info.Block {
+				lastBlock = info.Block
+				s.setLastBlock(lastBlock)
+			}
 
 			data := marshal(info)
 			log.Debug("<<<", "event", info.Event.ID(), "data", data)
@@ -384,7 +390,7 @@ func (s *Db) FindAncestors(e hash.Event) []hash.Event {
 	return res.([]hash.Event)
 }
 
-func (s *Db) setEpoch(num idx.Epoch) {
+func (s *Db) setLastBlock(num idx.Block) {
 	s.busy.Add(1)
 	defer s.busy.Done()
 
@@ -399,7 +405,7 @@ func (s *Db) setEpoch(num idx.Epoch) {
 	_, err = session.WriteTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
 		defer ctx.Close()
 
-		err := exec(ctx, `MATCH (e:Epoch %s) SET e.num = %d`,
+		err := exec(ctx, `MATCH (e:LastBlock %s) SET e.num = %d`,
 			fields{"id": key}, num)
 		if err != nil {
 			panic(err)
@@ -412,7 +418,7 @@ func (s *Db) setEpoch(num idx.Epoch) {
 	}
 }
 
-func (s *Db) GetEpoch() idx.Epoch {
+func (s *Db) GetLastBlock() idx.Block {
 	s.busy.Add(1)
 	defer s.busy.Done()
 
@@ -425,7 +431,7 @@ func (s *Db) GetEpoch() idx.Epoch {
 	const key = "current"
 
 	res, err := session.ReadTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
-		cursor, err := search(ctx, `MATCH (e:Epoch %s) RETURN e.num as num`, fields{
+		cursor, err := search(ctx, `MATCH (e:LastBlock %s) RETURN e.num as num`, fields{
 			"id": key,
 		})
 		if err != nil {
@@ -433,8 +439,8 @@ func (s *Db) GetEpoch() idx.Epoch {
 		}
 
 		for cursor.Next() {
-			epoch := idx.Epoch(cursor.Record().GetByIndex(0).(int64))
-			return epoch, nil
+			b := idx.Block(cursor.Record().GetByIndex(0).(int64))
+			return b, nil
 		}
 		return nil, nil
 	})
@@ -442,9 +448,9 @@ func (s *Db) GetEpoch() idx.Epoch {
 		ignoreFakeError(err)
 	}
 	if res == nil {
-		return idx.Epoch(1)
+		return idx.Block(2)
 	}
-	return res.(idx.Epoch)
+	return res.(idx.Block)
 }
 
 func exec(ctx neo4j.Transaction, cypher string, a ...interface{}) error {

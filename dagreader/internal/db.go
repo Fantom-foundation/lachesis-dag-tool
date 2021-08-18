@@ -6,22 +6,26 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 )
 
+type Storage interface {
+	GetLastBlock() idx.Block
+	HasEvent(hash.Event) bool
+	GetEvent(hash.Event) dag.Event
+}
+
 type Db interface {
-	GetEpoch() idx.Epoch
-	HasEvent(e hash.Event) bool
-	GetEvent(e hash.Event) dag.Event
+	Storage
 	Load(events <-chan *EventInfo)
 }
 
 type EventInfo struct {
-	Block  idx.Block
-	Event  dag.Event
-	Role   string
-	OnDone func()
+	Block   idx.Block
+	Event   dag.Event
+	Role    string
+	Dispose func()
 }
 
 func (e *EventInfo) Done() {
-	if e.OnDone != nil {
-		e.OnDone()
+	if e.Dispose != nil {
+		e.Dispose()
 	}
 }

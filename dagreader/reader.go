@@ -19,19 +19,20 @@ import (
 )
 
 type Reader struct {
-	url    string
-	output chan *internal.EventInfo
-
-	done chan struct{}
-	work sync.WaitGroup
+	url     string
+	output  chan *internal.EventInfo
+	storage internal.Storage
+	done    chan struct{}
+	work    sync.WaitGroup
 
 	logger.Instance
 }
 
-func NewReader(url string, start idx.Block) *Reader {
+func NewReader(url string, s internal.Storage) *Reader {
 	r := &Reader{
 		url:      url,
 		output:   make(chan *internal.EventInfo, 10),
+		storage:  s,
 		done:     make(chan struct{}),
 		Instance: logger.MakeInstance(),
 	}
@@ -39,7 +40,7 @@ func NewReader(url string, start idx.Block) *Reader {
 	r.SetName("reader")
 
 	r.work.Add(1)
-	go r.background(start)
+	go r.background()
 
 	return r
 }
@@ -57,7 +58,7 @@ func (s *Reader) Events() <-chan *internal.EventInfo {
 	return s.output
 }
 
-func (r *Reader) background(start idx.Block) {
+func (r *Reader) background() {
 	defer r.work.Done()
 	defer close(r.output)
 	r.Log.Info("started")
@@ -66,10 +67,11 @@ func (r *Reader) background(start idx.Block) {
 	var (
 		client   *ftmclient.Client
 		err      error
-		curBlock = big.NewInt(int64(start))
 		maxBlock = big.NewInt(0)
 		sbscr    ethereum.Subscription
 		headers  = make(chan *types.Header, 1)
+		curBlock = big.NewInt(int64(
+			r.storage.GetLastBlock()))
 	)
 
 	disconnect := func() {
@@ -180,6 +182,10 @@ func (s *Reader) readEvents(n *big.Int, client *ftmclient.Client, was0 map[hash.
 				continue
 			}
 			if _, was := was1[p]; was {
+				continue
+			}
+			if s.storage.HasEvent(p) {
+				was1[p] = struct{}{}
 				continue
 			}
 

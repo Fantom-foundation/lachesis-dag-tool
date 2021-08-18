@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/urfave/cli"
 
@@ -40,12 +39,9 @@ func actListen(ctx context.Context, cli *cli.Context) error {
 	buffer := NewEventsBuffer(db, ctx.Done())
 	defer buffer.Close()
 
-	// TODO: read from db
-	var fromBlock idx.Block = 2 // skip genesis
-
 	rpc := cli.String(rpcFlag.Name)
 	log.Info("connect to API", "url", rpc)
-	reader := NewReader(rpc, fromBlock)
+	reader := NewReader(rpc, db)
 	defer reader.Close()
 
 	for {
