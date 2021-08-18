@@ -157,11 +157,16 @@ func (s *Reader) readEvents(n *big.Int, client *ftmclient.Client, was0 map[hash.
 		if err != nil {
 			return
 		}
-		s.Log.Info("got event", "block", n, "id", event.ID())
+
+		var role = ""
+		if e == atropos {
+			role = "atropos"
+		}
+		s.Log.Info("got event", "block", n, "id", event.ID(), "role", role)
 		select {
 		case s.output <- &internal.EventInfo{
 			Block: idx.Block(n.Uint64()),
-			Role:  "TODO",
+			Role:  role,
 			Event: event,
 		}:
 			was1[event.ID()] = struct{}{}
