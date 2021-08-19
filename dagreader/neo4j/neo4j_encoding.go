@@ -56,10 +56,11 @@ func marshal(x interface{}) fields {
 	switch v := x.(type) {
 	case *internal.EventInfo:
 		return fields{
-			"block":   uint64(v.Block),
+			"block":   int64(v.Block),
 			"role":    v.Role,
 			"id":      eventID(v.Event.ID()),
 			"creator": int64(v.Event.Creator()),
+			"parents": v.Event.Parents(),
 		}
 	default:
 		panic("unsupported type")
@@ -69,7 +70,7 @@ func marshal(x interface{}) fields {
 func unmarshal(ff fields, x interface{}) {
 	switch v := x.(type) {
 	case *internal.EventInfo:
-		v.Block = idx.Block(ff["block"].(uint64))
+		v.Block = idx.Block(ff["block"].(int64))
 		v.Role = ff["role"].(string)
 
 		event := &inter.MutableEventPayload{}
@@ -79,6 +80,8 @@ func unmarshal(ff fields, x interface{}) {
 		event.SetID(eventHashID(id))
 
 		event.SetCreator(idx.ValidatorID(ff["creator"].(int64)))
+
+		event.SetParents(ff["parents"].(hash.Events))
 
 		v.Event = &event.Build().Event
 		return

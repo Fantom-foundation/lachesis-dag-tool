@@ -52,9 +52,6 @@ func NewEventsBuffer(db internal.Db, done <-chan struct{}) *EventsBuffer {
 		Size: cachescale.Identity.U64(10 * opt.MiB),
 	}, dagordering.Callback{
 		Process: func(e dag.Event) error {
-			s.RLock()
-			defer s.RUnlock()
-
 			id := e.ID()
 			epoch := id.Epoch()
 			info := s.events.info[id]
@@ -67,7 +64,6 @@ func NewEventsBuffer(db internal.Db, done <-chan struct{}) *EventsBuffer {
 			}
 
 			s.Log.Info("completed event", "id", id)
-
 			select {
 			case s.output <- info:
 				s.events.processed[epoch][id] = e
@@ -80,9 +76,6 @@ func NewEventsBuffer(db internal.Db, done <-chan struct{}) *EventsBuffer {
 		},
 
 		Exists: func(e hash.Event) bool {
-			s.RLock()
-			defer s.RUnlock()
-
 			if ee, ok := s.events.processed[e.Epoch()]; ok {
 				if _, exists := ee[e]; exists {
 					return true
@@ -97,9 +90,6 @@ func NewEventsBuffer(db internal.Db, done <-chan struct{}) *EventsBuffer {
 		},
 
 		Get: func(e hash.Event) dag.Event {
-			s.RLock()
-			defer s.RUnlock()
-
 			if ee, ok := s.events.processed[e.Epoch()]; ok {
 				if event, exists := ee[e]; exists {
 					return event
@@ -107,7 +97,10 @@ func NewEventsBuffer(db internal.Db, done <-chan struct{}) *EventsBuffer {
 			}
 
 			if len(s.events.processed) < 2 {
-				return s.db.GetEvent(e)
+				info := s.db.GetEvent(e)
+				if info != nil {
+					return info.Event
+				}
 			}
 
 			return nil

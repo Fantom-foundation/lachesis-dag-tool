@@ -9,7 +9,7 @@ import (
 type Storage interface {
 	GetLastBlock() idx.Block
 	HasEvent(hash.Event) bool
-	GetEvent(hash.Event) dag.Event
+	GetEvent(hash.Event) *EventInfo
 }
 
 type Db interface {

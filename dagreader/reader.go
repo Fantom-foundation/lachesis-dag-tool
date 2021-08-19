@@ -18,7 +18,7 @@ import (
 	"github.com/Fantom-foundation/lachesis-dag-tool/dagreader/internal"
 )
 
-type Reader struct {
+type DagReader struct {
 	url     string
 	output  chan *internal.EventInfo
 	storage internal.Storage
@@ -28,8 +28,8 @@ type Reader struct {
 	logger.Instance
 }
 
-func NewReader(url string, s internal.Storage) *Reader {
-	r := &Reader{
+func NewReader(url string, s internal.Storage) *DagReader {
+	r := &DagReader{
 		url:      url,
 		output:   make(chan *internal.EventInfo, 10),
 		storage:  s,
@@ -45,7 +45,7 @@ func NewReader(url string, s internal.Storage) *Reader {
 	return r
 }
 
-func (r *Reader) Close() {
+func (r *DagReader) Close() {
 	if r.done == nil {
 		return
 	}
@@ -54,14 +54,14 @@ func (r *Reader) Close() {
 	r.done = nil
 }
 
-func (s *Reader) Events() <-chan *internal.EventInfo {
+func (s *DagReader) Events() <-chan *internal.EventInfo {
 	return s.output
 }
 
-func (r *Reader) background() {
+func (r *DagReader) background() {
 	defer r.work.Done()
 	defer close(r.output)
-	r.Log.Info("started")
+	r.Log.Info("starting")
 	defer r.Log.Info("stopped")
 
 	var (
@@ -73,6 +73,7 @@ func (r *Reader) background() {
 		curBlock = big.NewInt(int64(
 			r.storage.GetLastBlock()))
 	)
+	r.Log.Info("start from", "block", curBlock)
 
 	disconnect := func() {
 		if sbscr != nil {
@@ -133,7 +134,7 @@ func (r *Reader) background() {
 	}
 }
 
-func (s *Reader) readEvents(n *big.Int, client *ftmclient.Client, was0 map[hash.Event]struct{}) (was1 map[hash.Event]struct{}, err error) {
+func (s *DagReader) readEvents(n *big.Int, client *ftmclient.Client, was0 map[hash.Event]struct{}) (was1 map[hash.Event]struct{}, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	blk, err := client.BlockByNumber(ctx, n)
 	cancel()
@@ -197,7 +198,7 @@ func (s *Reader) readEvents(n *big.Int, client *ftmclient.Client, was0 map[hash.
 	return
 }
 
-func (s *Reader) connect() (*ftmclient.Client, error) {
+func (s *DagReader) connect() (*ftmclient.Client, error) {
 	client, err := ftmclient.Dial(s.url)
 	if err != nil {
 		s.Log.Error("connect to", "url", s.url, "err", err)
@@ -207,7 +208,7 @@ func (s *Reader) connect() (*ftmclient.Client, error) {
 	return client, nil
 }
 
-func (s *Reader) subscribe(client *ftmclient.Client, headers chan *types.Header) (sbscr ethereum.Subscription, err error) {
+func (s *DagReader) subscribe(client *ftmclient.Client, headers chan *types.Header) (sbscr ethereum.Subscription, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
