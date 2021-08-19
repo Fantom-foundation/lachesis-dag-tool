@@ -10,25 +10,24 @@ import (
 )
 
 var (
-	rpcFlag = cli.StringFlag{
-		Name:  "rpc",
-		Usage: "go-opera RPC url",
-		Value: "ws://127.0.0.1:4500",
+	neo4jUrlFlag = cli.StringFlag{
+		Name:  "neo4j",
+		Usage: "Neo4j DB url",
+		Value: neo4j.DefaultDb,
 	}
 
-	cmdListen = cli.Command{
-		Name:      "listen",
-		ShortName: "l",
+	cmdSaveTo = cli.Command{
+		Name: "saveto",
 		Flags: []cli.Flag{
-			rpcFlag,
+			neo4jUrlFlag,
 		},
 		Action: cmd(actListen),
-		Usage:  "Listen go-opera events and write DAG into Neo4j.",
+		Usage:  "Write DAG into db.",
 	}
 )
 
 func actListen(ctx context.Context, cli *cli.Context) error {
-	disk := cli.GlobalString(neo4jUrlFlag.Name)
+	disk := cli.String(neo4jUrlFlag.Name)
 	log.Info("open DB", "path", disk)
 	db, err := neo4j.New(disk)
 	if err != nil {
@@ -39,7 +38,7 @@ func actListen(ctx context.Context, cli *cli.Context) error {
 	buffer := NewEventsBuffer(db, ctx.Done())
 	defer buffer.Close()
 
-	rpc := cli.String(rpcFlag.Name)
+	rpc := cli.GlobalString(operaApiUrlFlag.Name)
 	log.Info("connect to API", "url", rpc)
 	reader := NewReader(rpc, db)
 	defer reader.Close()

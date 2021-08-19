@@ -1,10 +1,10 @@
-# Opera tool: DAG reader
+# Opera tool: DAG-reader
 
-DAG read, analyze and convert tool.
+DAG-reader subscribes to a running opera node API and exports new event to the db.
 See `dagreader help`.
 
 
-## Run Neo4j graph-db:
+## Run Neo4j db:
 
  - `make neo4j` runs neo4j docker container on "bolt://localhost:7687" with `./docker/neo4j-data/` volume;
  - `make neo4j-sql` opens Neo4j Cypher shell;
@@ -14,7 +14,7 @@ See `dagreader help`.
 ## Load DAG into Neo4j db
 
  - run Neo4j db first;
- - from go-opera node: `dagreader listen [--rpc=ws://127.0.0.1:4500]`;
+ - from go-opera node: `dagreader [--api=ws://127.0.0.1:4500] saveto [--neo4j=bolt://localhost:7687]`;
 
 
 ## Read DAG from Neo4j db
