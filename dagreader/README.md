@@ -21,10 +21,14 @@ See `dagreader help`.
 
  - run Neo4j db;
  - load DAG into Neo4j;
- - `dagreader read "0x0000000400000016f9a4c23827a98e8dfa1358a41eb79d71e889c97c973722ab"`;
-
-
-## Read DAG from KV db
-
- - `dagreader read1 --datadir=${LACHESIS_DATADIR} "0x0000000400000016f9a4c23827a98e8dfa1358a41eb79d71e889c97c973722ab"`;
- - compare performance with Neo4j db;
+ - open Cypher console shell `make neo4j-sql`;
+ - query example: find event ancestors
+`@neo4j> MATCH (p:Event {id: "0x0000000b00000053c4fa5e79b127a9140705d0b78f1c42886cd9cffc167a46d8"})-[:PARENT]->(s:Event) RETURN DISTINCT s.id;`
+`+----------------------------------------------------------------------+`
+`| s.id                                                                 |`
+`+----------------------------------------------------------------------+`
+`| "0x0000000b00000052001ca14eff90a3c22e9293f020f946f67544e51f868c3077" |`
+`| "0x0000000b0000004fa45de96510b9695338d42a9a660037b649f473e8c1707d8c" |`
+`+----------------------------------------------------------------------+`
+`2 rows available after 69 ms, consumed after another 51 ms`
+`:exit`

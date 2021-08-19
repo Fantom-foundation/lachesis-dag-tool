@@ -31,7 +31,6 @@ func init() {
 	}
 	App.Commands = []cli.Command{
 		cmdSaveTo,
-		cmdReadNeo4j,
 	}
 }
 
