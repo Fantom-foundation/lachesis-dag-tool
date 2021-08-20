@@ -156,7 +156,7 @@ func (s *DagReader) readEvents(n *big.Int, client *ftmclient.Client, was0 map[ha
 		event, err = client.GetEvent(ctx, e)
 		cancel()
 		if err != nil {
-			s.Log.Error("get event", "block", n, "id", event.ID(), "err", err)
+			s.Log.Error("get event", "block", n, "id", e, "err", err)
 			return
 		}
 
