@@ -34,10 +34,8 @@ func NewReader(url string, s internal.Storage) *DagReader {
 		output:   make(chan *internal.EventInfo, 10),
 		storage:  s,
 		done:     make(chan struct{}),
-		Instance: logger.MakeInstance(),
+		Instance: logger.New("reader"),
 	}
-
-	r.SetName("reader")
 
 	r.work.Add(1)
 	go r.background()

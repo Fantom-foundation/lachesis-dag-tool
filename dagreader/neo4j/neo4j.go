@@ -45,9 +45,8 @@ func New(dbUrl string) (*Db, error) {
 
 	s := &Db{
 		drv:      db,
-		Instance: logger.MakeInstance(),
+		Instance: logger.New("neo4j"),
 	}
-	s.SetName("neo4j")
 
 	s.busy.Add(1)
 	defer s.busy.Done()

@@ -38,9 +38,8 @@ func NewEventsBuffer(db internal.Db, done <-chan struct{}) *EventsBuffer {
 	s := &EventsBuffer{
 		db:       db,
 		output:   make(chan *internal.EventInfo, 10),
-		Instance: logger.MakeInstance(),
+		Instance: logger.New("buffer"),
 	}
-	s.SetName("buffer")
 
 	s.events.processed = make(map[idx.Epoch]map[hash.Event]dag.Event, 3)
 	s.events.info = make(map[hash.Event]*internal.EventInfo, count)

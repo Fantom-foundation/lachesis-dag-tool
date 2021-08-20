@@ -38,6 +38,8 @@ github.com/Fantom-foundation/go-ethereum v1.9.7-0.20210817093144-c7491520e043 h1
 github.com/Fantom-foundation/go-ethereum v1.9.7-0.20210817093144-c7491520e043/go.mod h1:AItrK6rpGqvJuNAK06OPjCgxS71WP1EmWbn/t9zAM/M=
 github.com/Fantom-foundation/go-opera v0.0.0-20210621102035-55aaa977f8f5 h1:UkXV6uHFQVuaVrOpYgW+wIXAzBbIDJQVB/boe+T8SQA=
 github.com/Fantom-foundation/go-opera v0.0.0-20210621102035-55aaa977f8f5/go.mod h1:hbbLvYrZ+smp5RYmKIZbqRE2pFu4QF3Z4ANGG16DGWs=
+github.com/Fantom-foundation/go-opera v0.0.0-20210820105149-07604c23d28c h1:djZwXTIZzwchIBoXFZziIy206vWlSTKheraDgb7fySQ=
+github.com/Fantom-foundation/go-opera v0.0.0-20210820105149-07604c23d28c/go.mod h1:w0V6lnkfxoTW6GdK5VBGiqkfV4JFmkF1li6jIC8Iq18=
 github.com/Fantom-foundation/lachesis-base v0.0.0-20210420092627-c16f01e35562 h1:SFcBjyI5dos9JeIRBHnzU88SlVTlEjRbAUrlZ40uWfk=
 github.com/Fantom-foundation/lachesis-base v0.0.0-20210420092627-c16f01e35562/go.mod h1:E6+2LOvgADwSOv0U5YXhRJz4PlX8qJxvq8M93AOC1tM=
 github.com/Fantom-foundation/lachesis-base v0.0.0-20210721130657-54ad3c8a18c1 h1:FeYLXvgi3MSsWpNJcT1Jzr3LOPWR0c4qEV6C4WY5ISQ=
