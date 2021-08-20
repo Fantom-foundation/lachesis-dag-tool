@@ -60,7 +60,7 @@ func New(dbUrl string) (*Db, error) {
 	DDLs := []string{
 		"CREATE CONSTRAINT ON (e:Event) ASSERT e.id IS UNIQUE",
 		"CREATE CONSTRAINT ON (b:Block) ASSERT b.id IS UNIQUE",
-		"CREATE (b:LastBlock {id:'current',num:2})",
+		"CREATE (s:State {id:'last', block:2})",
 	}
 	for _, query := range DDLs {
 		_, err = session.WriteTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
@@ -109,7 +109,7 @@ func (s *Db) HasEvent(e hash.Event) bool {
 
 	res, err := session.ReadTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
 		cursor, err := search(ctx, `MATCH (e:Event %s) RETURN e`, fields{
-			"id": eventID(e),
+			"id": eventId2str(e),
 		})
 		if err != nil {
 			panic(err)
@@ -143,7 +143,7 @@ func (s *Db) GetEvent(e hash.Event) *internal.EventInfo {
 
 	res, err := session.ReadTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
 		cursor, err := search(ctx, `MATCH (e:Event %s) RETURN e.block as block, e.role as role, e.id as id, e.creator as creator`, fields{
-			"id": eventID(e),
+			"id": eventId2str(e),
 		})
 		if err != nil {
 			panic(err)
@@ -173,7 +173,7 @@ func (s *Db) GetEvent(e hash.Event) *internal.EventInfo {
 
 func (s *Db) getParents(session neo4j.Session, e hash.Event) hash.Events {
 	var parents hash.Events
-	id := eventID(e)
+	id := eventId2str(e)
 	_, err := session.ReadTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
 		cursor, err := search(ctx, `MATCH (e:Event %s)-[:PARENT]->(p) RETURN p.id`,
 			fields{"id": id},
@@ -182,7 +182,7 @@ func (s *Db) getParents(session neo4j.Session, e hash.Event) hash.Events {
 			panic(err)
 		}
 		for cursor.Next() {
-			p := eventHash(cursor.Record().GetByIndex(0).(string))
+			p := str2eventId(cursor.Record().GetByIndex(0).(string))
 			parents = append(parents, p)
 		}
 		return nil, nil
@@ -205,7 +205,7 @@ func (s *Db) Load(events <-chan *internal.EventInfo) {
 	}
 	defer session.Close()
 
-	parents := make(chan *internal.EventInfo, 10)
+	parents := make(chan *internal.EventInfo, 1)
 	defer close(parents)
 	go s.loadParents(parents)
 
@@ -221,7 +221,7 @@ func (s *Db) Load(events <-chan *internal.EventInfo) {
 
 			data := marshal(info)
 			delete(data, "parents")
-			s.Log.Info("<<< event", "id", info.Event.ID(), "data", data)
+			s.Log.Debug("<<< event", "id", info.Event.ID(), "data", data)
 			err = exec(ctx, "CREATE (e:Event %s)", data)
 			if err != nil {
 				panic(err)
@@ -262,9 +262,9 @@ func (s *Db) loadParents(events <-chan *internal.EventInfo) {
 			defer ctx.Close()
 
 			for _, p := range event.Parents() {
-				pid := eventID(p)
+				pid := eventId2str(p)
 				err = exec(ctx, `MATCH (e:Event %s), (p:Event %s) CREATE (e)-[:PARENT]->(p)`,
-					fields{"id": eventID(id)},
+					fields{"id": eventId2str(id)},
 					fields{"id": pid},
 				)
 				if err != nil {
@@ -311,7 +311,7 @@ func (s *Db) FindAncestors(e hash.Event) []hash.Event {
 	}
 	defer session.Close()
 
-	id := eventID(e)
+	id := eventId2str(e)
 
 	res, err := session.ReadTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
 		cursor, err := search(ctx, "MATCH (p:Event %s)-[:PARENT*]->(s:Event) RETURN DISTINCT s.id", fields{
@@ -323,7 +323,7 @@ func (s *Db) FindAncestors(e hash.Event) []hash.Event {
 
 		var ancestors []hash.Event
 		for cursor.Next() {
-			pid := eventHash(cursor.Record().GetByIndex(0).(string))
+			pid := str2eventId(cursor.Record().GetByIndex(0).(string))
 			ancestors = append(ancestors, pid)
 		}
 		return ancestors, nil
@@ -345,13 +345,11 @@ func (s *Db) setLastBlock(num idx.Block) {
 	}
 	defer session.Close()
 
-	const key = "current"
-
 	_, err = session.WriteTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
 		defer ctx.Close()
 
-		err := exec(ctx, `MATCH (e:LastBlock %s) SET e.num = %d`,
-			fields{"id": key}, num)
+		err := exec(ctx, `MATCH (s:State %s) SET s.block = %d`,
+			fields{"id": "last"}, num)
 		if err != nil {
 			panic(err)
 		}
@@ -373,11 +371,9 @@ func (s *Db) GetLastBlock() idx.Block {
 	}
 	defer session.Close()
 
-	const key = "current"
-
 	res, err := session.ReadTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
-		cursor, err := search(ctx, `MATCH (e:LastBlock %s) RETURN e.num as num`, fields{
-			"id": key,
+		cursor, err := search(ctx, `MATCH (s:State %s) RETURN s.block`, fields{
+			"id": "last",
 		})
 		if err != nil {
 			panic(err)

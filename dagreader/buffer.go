@@ -62,7 +62,7 @@ func NewEventsBuffer(db internal.Db, done <-chan struct{}) *EventsBuffer {
 				delete(s.events.processed, epoch-2)
 			}
 
-			s.Log.Info("completed event", "id", id)
+			s.Log.Debug("completed event", "id", id)
 			select {
 			case s.output <- info:
 				s.events.processed[epoch][id] = e

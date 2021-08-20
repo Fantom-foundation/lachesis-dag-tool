@@ -2,11 +2,13 @@ package neo4j
 
 import (
 	"encoding/json"
+	"strconv"
 	"strings"
 
 	"github.com/Fantom-foundation/go-opera/inter"
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/neo4j/neo4j-go-driver/neo4j"
 
 	"github.com/Fantom-foundation/lachesis-dag-tool/dagreader/internal"
@@ -58,7 +60,7 @@ func marshal(x interface{}) fields {
 		return fields{
 			"block":   int64(v.Block),
 			"role":    v.Role,
-			"id":      eventID(v.Event.ID()),
+			"id":      eventId2str(v.Event.ID()),
 			"creator": int64(v.Event.Creator()),
 			"parents": v.Event.Parents(),
 		}
@@ -74,10 +76,10 @@ func unmarshal(ff fields, x interface{}) {
 		v.Role = ff["role"].(string)
 
 		event := &inter.MutableEventPayload{}
-		id := eventHash(ff["id"].(string))
+		id := str2eventId(ff["id"].(string))
 		event.SetEpoch(id.Epoch())
 		event.SetLamport(id.Lamport())
-		event.SetID(eventHashID(id))
+		event.SetID(eventIdTail(id))
 
 		event.SetCreator(idx.ValidatorID(ff["creator"].(int64)))
 
@@ -90,16 +92,32 @@ func unmarshal(ff fields, x interface{}) {
 	}
 }
 
-// eventID is a FullID() without aliases.
-func eventID(e hash.Event) string {
-	return e.Hex()
+func eventId2str(e hash.Event) string {
+	return e.FullID()
 }
 
-func eventHash(id string) hash.Event {
-	return hash.HexToEventHash(id)
+// TODO: mv to the "github.com/Fantom-foundation/lachesis-base/hash"
+func str2eventId(s string) (id hash.Event) {
+	parts := strings.SplitN(s, ":", 3)
+
+	n, err := strconv.ParseUint(parts[0], 10, 32)
+	if err != nil {
+		panic(err)
+	}
+	copy(id[0:], idx.Epoch(n).Bytes())
+
+	n, err = strconv.ParseUint(parts[1], 10, 32)
+	if err != nil {
+		panic(err)
+	}
+	copy(id[4:], idx.Lamport(n).Bytes())
+
+	copy(id[8:], common.Hex2BytesFixed(parts[2], 32-4-4))
+
+	return
 }
 
-func eventHashID(e hash.Event) (r [24]byte) {
+func eventIdTail(e hash.Event) (r [24]byte) {
 	copy(r[:], e.Bytes()[8:])
 	return
 }

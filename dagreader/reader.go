@@ -120,7 +120,7 @@ func (r *DagReader) background() {
 			curBlock.Add(curBlock, big.NewInt(1))
 		}
 
-		r.Log.Warn("wait for next block")
+		r.Log.Info("wait for next block")
 		select {
 		case b := <-headers:
 			if maxBlock.Cmp(b.Number) < 0 {
@@ -137,11 +137,11 @@ func (s *DagReader) readEvents(n *big.Int, client *ftmclient.Client, was0 map[ha
 	blk, err := client.BlockByNumber(ctx, n)
 	cancel()
 	if err != nil {
-		s.Log.Error("detected block", "n", n, "err", err)
+		s.Log.Error("get block", "n", n, "err", err)
 		return
 	}
 	atropos := hash.Event(blk.Hash())
-	s.Log.Info("detected block", "n", n, "atropos", atropos)
+	s.Log.Info("got block", "n", n, "atropos", atropos)
 
 	was1 = make(map[hash.Event]struct{})
 	queue := make([]hash.Event, 0, 100)
@@ -156,6 +156,7 @@ func (s *DagReader) readEvents(n *big.Int, client *ftmclient.Client, was0 map[ha
 		event, err = client.GetEvent(ctx, e)
 		cancel()
 		if err != nil {
+			s.Log.Error("get event", "block", n, "id", event.ID(), "err", err)
 			return
 		}
 
