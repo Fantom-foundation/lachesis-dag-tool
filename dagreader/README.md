@@ -23,12 +23,14 @@ See `dagreader help`.
  - load DAG into Neo4j;
  - open Cypher console shell `make neo4j-sql`;
  - query example: find event ancestors
-`@neo4j> MATCH (p:Event {id: "0x0000000b00000053c4fa5e79b127a9140705d0b78f1c42886cd9cffc167a46d8"})-[:PARENT]->(s:Event) RETURN DISTINCT s.id;`
-`+----------------------------------------------------------------------+`
-`| s.id                                                                 |`
-`+----------------------------------------------------------------------+`
-`| "0x0000000b00000052001ca14eff90a3c22e9293f020f946f67544e51f868c3077" |`
-`| "0x0000000b0000004fa45de96510b9695338d42a9a660037b649f473e8c1707d8c" |`
-`+----------------------------------------------------------------------+`
-`2 rows available after 69 ms, consumed after another 51 ms`
-`:exit`
+```
+@neo4j> MATCH (p:Event {id: "0x0000000b00000053c4fa5e79b127a9140705d0b78f1c42886cd9cffc167a46d8"})-[:PARENT]->(s:Event) RETURN DISTINCT s.id;
++----------------------------------------------------------------------+
+| s.id                                                                 |
++----------------------------------------------------------------------+
+| "0x0000000b00000052001ca14eff90a3c22e9293f020f946f67544e51f868c3077" |
+| "0x0000000b0000004fa45de96510b9695338d42a9a660037b649f473e8c1707d8c" |
++----------------------------------------------------------------------+
+2 rows available after 69 ms, consumed after another 51 ms
+:exit
+```
