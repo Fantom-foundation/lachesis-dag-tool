@@ -5,14 +5,16 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Fantom-foundation/go-lachesis/hash"
-	"github.com/Fantom-foundation/go-lachesis/inter"
-	"github.com/Fantom-foundation/go-lachesis/inter/idx"
+	"github.com/Fantom-foundation/go-opera/logger"
+	"github.com/Fantom-foundation/lachesis-base/hash"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
 	lru "github.com/hashicorp/golang-lru"
 	"github.com/neo4j/neo4j-go-driver/neo4j"
 	"github.com/paulbellamy/ratecounter"
+
+	"github.com/Fantom-foundation/lachesis-dag-tool/dagreader/internal"
 )
 
 const (
@@ -27,8 +29,10 @@ type Db struct {
 	drv   neo4j.Driver
 	busy  sync.WaitGroup
 	cache struct {
-		EventsHeaders *lru.Cache
+		EventInfos *lru.Cache
 	}
+
+	logger.Instance
 }
 
 func New(dbUrl string) (*Db, error) {
@@ -40,7 +44,8 @@ func New(dbUrl string) (*Db, error) {
 	}
 
 	s := &Db{
-		drv: db,
+		drv:      db,
+		Instance: logger.New("neo4j"),
 	}
 
 	s.busy.Add(1)
@@ -54,8 +59,8 @@ func New(dbUrl string) (*Db, error) {
 
 	DDLs := []string{
 		"CREATE CONSTRAINT ON (e:Event) ASSERT e.id IS UNIQUE",
-		"CREATE CONSTRAINT ON (e:Epoch) ASSERT e.id IS UNIQUE",
-		"CREATE (e:Epoch {id:'current',num:1})",
+		"CREATE CONSTRAINT ON (b:Block) ASSERT b.id IS UNIQUE",
+		"CREATE (b:LastBlock {id:'current',num:2})",
 	}
 	for _, query := range DDLs {
 		_, err = session.WriteTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
@@ -74,7 +79,7 @@ func New(dbUrl string) (*Db, error) {
 		}
 	}
 
-	s.cache.EventsHeaders, err = lru.New(500)
+	s.cache.EventInfos, err = lru.New(500)
 	if err != nil {
 		panic(err)
 	}
@@ -89,7 +94,7 @@ func (s *Db) Close() error {
 
 func (s *Db) HasEvent(e hash.Event) bool {
 	// Get event from LRU cache first.
-	if _, ok := s.cache.EventsHeaders.Get(e); ok {
+	if _, ok := s.cache.EventInfos.Get(e); ok {
 		return true
 	}
 
@@ -102,11 +107,9 @@ func (s *Db) HasEvent(e hash.Event) bool {
 	}
 	defer session.Close()
 
-	id := eventID(e)
-
 	res, err := session.ReadTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
 		cursor, err := search(ctx, `MATCH (e:Event %s) RETURN e`, fields{
-			"id": id,
+			"id": eventID(e),
 		})
 		if err != nil {
 			panic(err)
@@ -122,12 +125,11 @@ func (s *Db) HasEvent(e hash.Event) bool {
 	return res.(bool)
 }
 
-// GetEvent returns event header.
-// Note: returned event has incorrect .Hash() because not all the fields are stored.
-func (s *Db) GetEvent(e hash.Event) *inter.EventHeaderData {
+// GetEvent returns event info.
+func (s *Db) GetEvent(e hash.Event) *internal.EventInfo {
 	// Get event from LRU cache first.
-	if ev, ok := s.cache.EventsHeaders.Get(e); ok {
-		return ev.(*inter.EventHeaderData)
+	if ev, ok := s.cache.EventInfos.Get(e); ok {
+		return ev.(*internal.EventInfo)
 	}
 
 	s.busy.Add(1)
@@ -139,11 +141,9 @@ func (s *Db) GetEvent(e hash.Event) *inter.EventHeaderData {
 	}
 	defer session.Close()
 
-	id := eventID(e)
-
 	res, err := session.ReadTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
-		cursor, err := search(ctx, `MATCH (e:Event %s) RETURN e.id as id, e.creator as creator`, fields{
-			"id": id,
+		cursor, err := search(ctx, `MATCH (e:Event %s) RETURN e.block as block, e.role as role, e.id as id, e.creator as creator`, fields{
+			"id": eventID(e),
 		})
 		if err != nil {
 			panic(err)
@@ -151,9 +151,7 @@ func (s *Db) GetEvent(e hash.Event) *inter.EventHeaderData {
 
 		for cursor.Next() {
 			ff := readFields(cursor.Record())
-			header := new(inter.EventHeaderData)
-			unmarshal(ff, header)
-			return header, nil
+			return ff, nil
 		}
 		return nil, nil
 	})
@@ -163,64 +161,14 @@ func (s *Db) GetEvent(e hash.Event) *inter.EventHeaderData {
 	if res == nil {
 		return nil
 	}
-	header := res.(*inter.EventHeaderData)
 
-	header.Parents = s.getParents(session, e)
+	ff := res.(fields)
+	ff["parents"] = s.getParents(session, e)
 
-	return header
-}
+	info := new(internal.EventInfo)
+	unmarshal(ff, info)
 
-func (s *Db) getEvents(epoch idx.Epoch) <-chan *storedEvent {
-	events := make(chan *storedEvent)
-	go func() {
-		defer close(events)
-
-		s.busy.Add(1)
-		defer s.busy.Done()
-
-		session0, err := s.drv.Session(neo4j.AccessModeRead)
-		if err != nil {
-			panic(err)
-		}
-		defer session0.Close()
-
-		session1, err := s.drv.Session(neo4j.AccessModeRead)
-		if err != nil {
-			panic(err)
-		}
-		defer session1.Close()
-
-		_, err = session0.ReadTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
-			cursor, err := search(ctx, `MATCH (e:Event) RETURN e.id as id, e.creator as creator`)
-			if err != nil {
-				panic(err)
-			}
-
-			for cursor.Next() {
-				ff := readFields(cursor.Record())
-				id := ff["id"].(string)
-				e := eventHash(id)
-				if e.Epoch() != epoch {
-					continue
-				}
-				header := new(inter.EventHeaderData)
-				unmarshal(ff, header)
-
-				header.Parents = s.getParents(session1, e)
-
-				events <- &storedEvent{
-					OriginHash:      e,
-					EventHeaderData: header,
-				}
-			}
-			return nil, nil
-		})
-		if err != nil {
-			ignoreFakeError(err)
-		}
-	}()
-
-	return events
+	return info
 }
 
 func (s *Db) getParents(session neo4j.Session, e hash.Event) hash.Events {
@@ -246,8 +194,8 @@ func (s *Db) getParents(session neo4j.Session, e hash.Event) hash.Events {
 	return parents
 }
 
-// Load data from events chain.
-func (s *Db) Load(events <-chan ToStore) {
+// Load data from input chain.
+func (s *Db) Load(events <-chan *internal.EventInfo) {
 	s.busy.Add(1)
 	defer s.busy.Done()
 
@@ -257,18 +205,23 @@ func (s *Db) Load(events <-chan ToStore) {
 	}
 	defer session.Close()
 
-	parents := make(chan ToStore, 10)
+	parents := make(chan *internal.EventInfo, 10)
 	defer close(parents)
-
 	go s.loadParents(parents)
 
-	for task := range events {
-		event := task.Payload()
+	var lastBlock idx.Block = s.GetLastBlock()
+	for info := range events {
 		_, err = session.WriteTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
 			defer ctx.Close()
 
-			data := marshal(event)
-			log.Debug("<<<", "event", event.Hash(), "data", data, "parents", event.Parents)
+			if lastBlock < info.Block {
+				lastBlock = info.Block
+				s.setLastBlock(lastBlock)
+			}
+
+			data := marshal(info)
+			delete(data, "parents")
+			s.Log.Info("<<< event", "id", info.Event.ID(), "data", data)
 			err = exec(ctx, "CREATE (e:Event %s)", data)
 			if err != nil {
 				panic(err)
@@ -280,11 +233,11 @@ func (s *Db) Load(events <-chan ToStore) {
 			ignoreFakeError(err)
 		}
 
-		parents <- task
+		parents <- info
 	}
 }
 
-func (s *Db) loadParents(events <-chan ToStore) {
+func (s *Db) loadParents(events <-chan *internal.EventInfo) {
 	s.busy.Add(1)
 	defer s.busy.Done()
 
@@ -302,17 +255,16 @@ func (s *Db) loadParents(events <-chan ToStore) {
 		last     hash.Event
 	)
 
-	for task := range events {
-		event := task.Payload()
-		e := event.Hash()
-		id := eventID(e)
+	for info := range events {
+		event := info.Event
+		id := event.ID()
 		_, err = session.WriteTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
 			defer ctx.Close()
 
-			for _, p := range event.Parents {
+			for _, p := range event.Parents() {
 				pid := eventID(p)
 				err = exec(ctx, `MATCH (e:Event %s), (p:Event %s) CREATE (e)-[:PARENT]->(p)`,
-					fields{"id": id},
+					fields{"id": eventID(id)},
 					fields{"id": pid},
 				)
 				if err != nil {
@@ -325,14 +277,14 @@ func (s *Db) loadParents(events <-chan ToStore) {
 			ignoreFakeError(err)
 		}
 
-		s.cache.EventsHeaders.Add(e, event)
-		task.Done()
+		s.cache.EventInfos.Add(id, info)
+		info.Done()
 
 		counter.Incr(1)
 		total++
-		last = event.Hash()
+		last = event.ID()
 		if time.Since(reported) >= statsReportLimit {
-			log.Info("<<<",
+			s.Log.Info("<<<",
 				"last", last,
 				"rate", counter.Rate()/60,
 				"total", total,
@@ -341,7 +293,7 @@ func (s *Db) loadParents(events <-chan ToStore) {
 		}
 	}
 
-	log.Info("Total imported events",
+	s.Log.Info("Total imported events",
 		"last", last,
 		"rate", total*1000/time.Since(start).Milliseconds(),
 		"total", total,
@@ -383,7 +335,7 @@ func (s *Db) FindAncestors(e hash.Event) []hash.Event {
 	return res.([]hash.Event)
 }
 
-func (s *Db) setEpoch(num idx.Epoch) {
+func (s *Db) setLastBlock(num idx.Block) {
 	s.busy.Add(1)
 	defer s.busy.Done()
 
@@ -398,7 +350,7 @@ func (s *Db) setEpoch(num idx.Epoch) {
 	_, err = session.WriteTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
 		defer ctx.Close()
 
-		err := exec(ctx, `MATCH (e:Epoch %s) SET e.num = %d`,
+		err := exec(ctx, `MATCH (e:LastBlock %s) SET e.num = %d`,
 			fields{"id": key}, num)
 		if err != nil {
 			panic(err)
@@ -411,7 +363,7 @@ func (s *Db) setEpoch(num idx.Epoch) {
 	}
 }
 
-func (s *Db) GetEpoch() idx.Epoch {
+func (s *Db) GetLastBlock() idx.Block {
 	s.busy.Add(1)
 	defer s.busy.Done()
 
@@ -424,7 +376,7 @@ func (s *Db) GetEpoch() idx.Epoch {
 	const key = "current"
 
 	res, err := session.ReadTransaction(func(ctx neo4j.Transaction) (interface{}, error) {
-		cursor, err := search(ctx, `MATCH (e:Epoch %s) RETURN e.num as num`, fields{
+		cursor, err := search(ctx, `MATCH (e:LastBlock %s) RETURN e.num as num`, fields{
 			"id": key,
 		})
 		if err != nil {
@@ -432,8 +384,8 @@ func (s *Db) GetEpoch() idx.Epoch {
 		}
 
 		for cursor.Next() {
-			epoch := idx.Epoch(cursor.Record().GetByIndex(0).(int64))
-			return epoch, nil
+			b := idx.Block(cursor.Record().GetByIndex(0).(int64))
+			return b, nil
 		}
 		return nil, nil
 	})
@@ -441,9 +393,9 @@ func (s *Db) GetEpoch() idx.Epoch {
 		ignoreFakeError(err)
 	}
 	if res == nil {
-		return idx.Epoch(1)
+		return idx.Block(2)
 	}
-	return res.(idx.Epoch)
+	return res.(idx.Block)
 }
 
 func exec(ctx neo4j.Transaction, cypher string, a ...interface{}) error {

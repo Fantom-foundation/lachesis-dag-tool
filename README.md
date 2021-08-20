@@ -1,6 +1,6 @@
 # Lachesis DAG tools
 
-Here some dev tools to deal with lachesis:
+Here some dev tools to deal with opera:
 
- - [./exporter](./exporter) - DAG analyze and convert tool;
+ - [./dagreader](./dagreader) - DAG reader and exporter tool;
  - [./txsgen](./txsgen) - transactions generator;
