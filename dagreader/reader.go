@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/big"
+	"strings"
 	"sync"
 	"time"
 
@@ -151,19 +152,26 @@ func (s *DagReader) readEvents(n *big.Int, client *ftmclient.Client, was0 map[ha
 		e := queue[len(queue)-1]
 		queue = queue[:len(queue)-1]
 
+		var role = ""
+		if e == atropos {
+			role = "atropos"
+		}
+
 		var event inter.EventI
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		event, err = client.GetEvent(ctx, e)
 		cancel()
 		if err != nil {
-			s.Log.Error("get event", "block", n, "id", e, "err", err)
-			return
+			if strings.Contains(err.Error(), "not found") {
+				event = notFoundEvent(e)
+				role = role + "*"
+				err = nil
+			} else {
+				s.Log.Error("get event", "block", n, "id", e, "err", err)
+				return
+			}
 		}
 
-		var role = ""
-		if e == atropos {
-			role = "atropos"
-		}
 		s.Log.Info("got event", "block", n, "id", event.ID(), "role", role)
 		select {
 		case s.output <- &internal.EventInfo{
@@ -195,6 +203,19 @@ func (s *DagReader) readEvents(n *big.Int, client *ftmclient.Client, was0 map[ha
 	}
 
 	return
+}
+
+func notFoundEvent(id hash.Event) inter.EventI {
+	e := inter.MutableEventPayload{}
+
+	e.SetEpoch(id.Epoch())
+	e.SetLamport(id.Lamport())
+
+	var idTail [24]byte
+	copy(idTail[:], id[8:])
+	e.SetID(idTail)
+
+	return &e.Build().Event
 }
 
 func (s *DagReader) connect() (*ftmclient.Client, error) {

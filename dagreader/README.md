@@ -1,7 +1,7 @@
 # Opera tool: DAG-reader
 
-DAG-reader subscribes to a running opera node API and exports new event to the db.
-See `dagreader help`.
+DAG-reader subscribes to a running opera node API and exports new event to the db. See `dagreader help`.
+Field 'role' hints event consensus role (atropos or not).
 
 
 ## Run Neo4j db:
