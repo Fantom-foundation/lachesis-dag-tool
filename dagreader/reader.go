@@ -29,7 +29,7 @@ type DagReader struct {
 	logger.Instance
 }
 
-func NewReader(url string, s internal.Storage) *DagReader {
+func NewReader(url string, dagStart idx.Block, s internal.Storage) *DagReader {
 	r := &DagReader{
 		url:      url,
 		output:   make(chan *internal.EventInfo, 10),
@@ -39,7 +39,7 @@ func NewReader(url string, s internal.Storage) *DagReader {
 	}
 
 	r.work.Add(1)
-	go r.background()
+	go r.background(dagStart)
 
 	return r
 }
@@ -57,7 +57,7 @@ func (s *DagReader) Events() <-chan *internal.EventInfo {
 	return s.output
 }
 
-func (r *DagReader) background() {
+func (r *DagReader) background(dagStart idx.Block) {
 	defer r.work.Done()
 	defer close(r.output)
 	r.Log.Info("starting")
@@ -69,9 +69,15 @@ func (r *DagReader) background() {
 		maxBlock = big.NewInt(0)
 		sbscr    ethereum.Subscription
 		headers  = make(chan *types.Header, 1)
-		curBlock = big.NewInt(int64(
-			r.storage.GetLastBlock()))
+		curBlock *big.Int
 	)
+
+	if last := r.storage.GetLastBlock(); last > dagStart {
+		curBlock = big.NewInt(int64(last))
+	} else {
+		curBlock = big.NewInt(int64(dagStart))
+	}
+
 	r.Log.Info("start from", "block", curBlock)
 
 	disconnect := func() {
@@ -134,7 +140,7 @@ func (r *DagReader) background() {
 }
 
 func (s *DagReader) readEvents(n *big.Int, client *ftmclient.Client, was0 map[hash.Event]struct{}) (was1 map[hash.Event]struct{}, err error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
 	blk, err := client.BlockByNumber(ctx, n)
 	cancel()
 	if err != nil {
@@ -158,7 +164,7 @@ func (s *DagReader) readEvents(n *big.Int, client *ftmclient.Client, was0 map[ha
 		}
 
 		var event inter.EventI
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
 		event, err = client.GetEvent(ctx, e)
 		cancel()
 		if err != nil {

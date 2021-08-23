@@ -60,7 +60,7 @@ func New(dbUrl string) (*Db, error) {
 	DDLs := []string{
 		"CREATE CONSTRAINT ON (e:Event) ASSERT e.id IS UNIQUE",
 		"CREATE CONSTRAINT ON (b:Block) ASSERT b.id IS UNIQUE",
-		"CREATE (s:State {id:'last', block:2})",
+		"CREATE (s:State {id:'last', block:1})",
 	}
 	for _, query := range DDLs {
 		_, err = session.WriteTransaction(func(ctx neo4j.Transaction) (interface{}, error) {

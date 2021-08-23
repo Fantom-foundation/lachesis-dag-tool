@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/urfave/cli"
 
@@ -21,12 +22,12 @@ var (
 		Flags: []cli.Flag{
 			neo4jUrlFlag,
 		},
-		Action: cmd(actListen),
+		Action: cmd(actSaveTo),
 		Usage:  "Write DAG into db.",
 	}
 )
 
-func actListen(ctx context.Context, cli *cli.Context) error {
+func actSaveTo(ctx context.Context, cli *cli.Context) error {
 	disk := cli.String(neo4jUrlFlag.Name)
 	log.Info("open DB", "path", disk)
 	db, err := neo4j.New(disk)
@@ -39,8 +40,10 @@ func actListen(ctx context.Context, cli *cli.Context) error {
 	defer buffer.Close()
 
 	rpc := cli.GlobalString(operaApiUrlFlag.Name)
+	dagStart := idx.Block(cli.GlobalUint64(dagStartFlag.Name))
+
 	log.Info("connect to API", "url", rpc)
-	reader := NewReader(rpc, db)
+	reader := NewReader(rpc, dagStart, db)
 	defer reader.Close()
 
 	for {

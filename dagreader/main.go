@@ -19,6 +19,12 @@ var (
 		Usage: "opera API url",
 		Value: "ws://127.0.0.1:4500",
 	}
+
+	dagStartFlag = cli.Uint64Flag{
+		Name:  "dagstart",
+		Usage: "genesis blocks with no DAG to skip them (4564024 for mainnet)",
+		Value: 1,
+	}
 )
 
 func init() {
@@ -28,6 +34,7 @@ func init() {
 	App.Version = version()
 	App.Flags = []cli.Flag{
 		operaApiUrlFlag,
+		dagStartFlag,
 	}
 	App.Commands = []cli.Command{
 		cmdSaveTo,
