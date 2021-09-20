@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"math"
 	"math/big"
 	"sync"
@@ -10,10 +9,7 @@ import (
 
 	"github.com/Fantom-foundation/go-opera/logger"
 	"github.com/ethereum/go-ethereum/accounts"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
 )
 
 type ReadonlyGenerator struct {
@@ -149,70 +145,9 @@ func (g *ReadonlyGenerator) Yield() *Transaction {
 	return tx
 }
 
-func (g *ReadonlyGenerator) generate(position uint, state *genState) *Transaction {
-	count := uint(len(g.accs))
-	ballotAddr, _ := state.Session.(*common.Address)
-	var (
-		maker    TxMaker
-		callback TxCallback
-		dsc      string
-	)
-
-	switch step := (position % 100001); {
-
-	case step == 0:
-		dsc = "ballot contract creation"
-		acc := g.accs[position%count]
-		maker = g.ballotCreateContract(acc)
-		state.NotReady(dsc)
-		callback = func(r *types.Receipt, e error) {
-			// r may be nil, then panic
-			state.Session = &r.ContractAddress
-			state.Ready()
-		}
-
-	case 0 < step && step < 100000 && step%2 == 0:
-		acc := g.accs[(position/2)%count]
-		chose := ballotRandChose()
-		dsc = fmt.Sprintf("%s voites for %d", acc.Address.String(), chose)
-		maker = g.ballotVoite(acc, *ballotAddr, chose)
-		break
-
-	case 0 < step && step < 100000 && step%2 == 1:
-		acc := g.accs[(position/2)%count]
-		dsc = fmt.Sprintf("count voite logs of %s", acc.Address.String())
-		maker = g.ballotCountOfVoites(acc, *ballotAddr)
-		break
-
-	case step == 100000:
-		dsc = "ballot winner reading"
-		maker = g.ballotWinner(*ballotAddr)
-
-	default:
-		panic(fmt.Sprintf("unknown step %d", step))
-	}
-
+func (g *ReadonlyGenerator) generate(_ uint, _ *genState) *Transaction {
 	return &Transaction{
-		Make:     maker,
-		Callback: callback,
-		Dsc:      dsc,
+		Make: g.randomSfcCall(),
+		Dsc:  "random SFC read",
 	}
-}
-
-func (g *ReadonlyGenerator) Payer(from accounts.Account, amounts ...*big.Int) *bind.TransactOpts {
-	t, err := bind.NewKeyStoreTransactorWithChainID(g.ks, from, g.chainId)
-	if err != nil {
-		panic(err)
-	}
-
-	t.Value = big.NewInt(0)
-	for _, amount := range amounts {
-		t.Value.Add(t.Value, amount)
-	}
-
-	return t
-}
-
-func (g *ReadonlyGenerator) ReadOnly() *bind.CallOpts {
-	return &bind.CallOpts{}
 }
