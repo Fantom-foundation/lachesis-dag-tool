@@ -59,6 +59,11 @@ func init() {
 			Description: `Deploys a fake Contract and generates a lot of calls behalf of accounts in the keystore dir (except config.Payer).`,
 		},
 		cli.Command{
+			Action:      generateReadonly,
+			Name:        "readonly",
+			Description: `Generates a lot of readonly API eth_call to the SFC.`,
+		},
+		cli.Command{
 			Action:      generateTransfers,
 			Name:        "transfers",
 			Description: `Generates a lot of transfer txs between accounts in the keystore dir (except config.Payer).`,
@@ -206,6 +211,22 @@ func generateCalls(ctx *cli.Context) error {
 
 	generator := NewCallsGenerator(cfg, keyStore)
 	generator.SetName("CallsGen")
+	err = generate(generator, maxTps)
+	return err
+}
+
+// generateReadonly action.
+func generateReadonly(ctx *cli.Context) error {
+	cfg := mainCfg
+	keyStore, err := makeKeyStore(ctx)
+	if err != nil {
+		return err
+	}
+
+	maxTps := getTpsLimit(ctx)
+
+	generator := NewReadonlyGenerator(cfg, keyStore)
+	generator.SetName("ReadonlyGen")
 	err = generate(generator, maxTps)
 	return err
 }
