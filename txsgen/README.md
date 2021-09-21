@@ -21,6 +21,11 @@ See `txsgen help` for details.
  - `./txsgen calls` deploys test Ballot contract, and generates a lot of calls to it then;
 
 
+## readonly API-calls:
+
+ - `./txsgen readonly` generates a lot of readonly calls to to the SFC. Use it to pay no fee;
+
+
 ## Amount transfers:
 
  - `./txsgen transfers` generates a lot of transfer transactions;
