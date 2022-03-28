@@ -4,6 +4,7 @@
 package ballot
 
 import (
+	"errors"
 	"math/big"
 	"strings"
 
@@ -17,6 +18,7 @@ import (
 
 // Reference imports to suppress errors if they are not otherwise used.
 var (
+	_ = errors.New
 	_ = big.NewInt
 	_ = strings.NewReader
 	_ = ethereum.NotFound
@@ -26,20 +28,31 @@ var (
 	_ = event.NewSubscription
 )
 
+// ContractMetaData contains all meta data concerning the Contract contract.
+var ContractMetaData = &bind.MetaData{
+	ABI: "[{\"inputs\":[{\"internalType\":\"bytes32[]\",\"name\":\"proposalNames\",\"type\":\"bytes32[]\"}],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"who\",\"type\":\"address\"},{\"indexed\":true,\"internalType\":\"uint256\",\"name\":\"num\",\"type\":\"uint256\"},{\"indexed\":true,\"internalType\":\"bytes32\",\"name\":\"text\",\"type\":\"bytes32\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"amount\",\"type\":\"uint256\"}],\"name\":\"Voiting\",\"type\":\"event\"},{\"constant\":true,\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"name\":\"proposals\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"name\",\"type\":\"bytes32\"},{\"internalType\":\"uint256\",\"name\":\"voteCount\",\"type\":\"uint256\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"proposal\",\"type\":\"uint256\"}],\"name\":\"vote\",\"outputs\":[],\"payable\":true,\"stateMutability\":\"payable\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"name\":\"voters\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"vote\",\"type\":\"uint256\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[],\"name\":\"winnerName\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"winnerName_\",\"type\":\"bytes32\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[],\"name\":\"winningProposal\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"winningProposal_\",\"type\":\"uint256\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"}]",
+	Bin: "0x608060405234801561001057600080fd5b506040516104673803806104678339818101604052602081101561003357600080fd5b810190808051604051939291908464010000000082111561005357600080fd5b90830190602082018581111561006857600080fd5b825186602082028301116401000000008211171561008557600080fd5b82525081516020918201928201910280838360005b838110156100b257818101518382015260200161009a565b5050505090500160405250505060008090505b815181101561012757600160405180604001604052808484815181106100e757fe5b60209081029190910181015182526000918101829052835460018181018655948352918190208351600290930201918255919091015190820155016100c5565b505061032f806101386000396000f3fe60806040526004361061005a5760003560e01c8063609ff1bd11610043578063609ff1bd146100c1578063a3ec138d146100e8578063e2ba53f0146101285761005a565b80630121b93f1461005f578063013cf08b1461007e575b600080fd5b61007c6004803603602081101561007557600080fd5b503561013d565b005b34801561008a57600080fd5b506100a8600480360360208110156100a157600080fd5b5035610229565b6040805192835260208301919091528051918290030190f35b3480156100cd57600080fd5b506100d6610254565b60408051918252519081900360200190f35b3480156100f457600080fd5b506100d66004803603602081101561010b57600080fd5b503573ffffffffffffffffffffffffffffffffffffffff166102bb565b34801561013457600080fd5b506100d66102cd565b33600090815260208190526040902054801561018057600180600183038154811061016457fe5b6000918252602090912060016002909202010180549190910390555b3360009081526020526001805481908490811061019957fe5b906000526020600020906002020160010160008282540192505081905550600182815481106101c457fe5b906000526020600020906002020160000154823373ffffffffffffffffffffffffffffffffffffffff167fee51d93e4784cfee8c8b14400fd5c768d31980d6a648124618b164b9b3dd69e1346040518082815260200191505060405180910390a45050565b6001818154811061023657fe5b60009182526020909120600290910201805460019091015490915082565b600080805b6001548110156102b657816001828154811061027157fe5b90600052602060002090600202016001015411156102ae576001818154811061029657fe5b90600052602060002090600202016001015491508092505b600101610259565b505090565b60006020819052908152604090205481565b600060016102d9610254565b815481106102e357fe5b90600052602060002090600202016000015490509056fea265627a7a723158207d2c2287159dd480a6fc9af9edeae1b086492978db89fbc32be265a54a9c00d764736f6c634300050c0032",
+}
+
 // ContractABI is the input ABI used to generate the binding from.
-const ContractABI = "[{\"inputs\":[{\"internalType\":\"bytes32[]\",\"name\":\"proposalNames\",\"type\":\"bytes32[]\"}],\"payable\":false,\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"who\",\"type\":\"address\"},{\"indexed\":true,\"internalType\":\"uint256\",\"name\":\"num\",\"type\":\"uint256\"},{\"indexed\":true,\"internalType\":\"bytes32\",\"name\":\"text\",\"type\":\"bytes32\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"amount\",\"type\":\"uint256\"}],\"name\":\"Voiting\",\"type\":\"event\"},{\"constant\":true,\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"name\":\"proposals\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"name\",\"type\":\"bytes32\"},{\"internalType\":\"uint256\",\"name\":\"voteCount\",\"type\":\"uint256\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":false,\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"proposal\",\"type\":\"uint256\"}],\"name\":\"vote\",\"outputs\":[],\"payable\":true,\"stateMutability\":\"payable\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"name\":\"voters\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"vote\",\"type\":\"uint256\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[],\"name\":\"winnerName\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"winnerName_\",\"type\":\"bytes32\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"},{\"constant\":true,\"inputs\":[],\"name\":\"winningProposal\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"winningProposal_\",\"type\":\"uint256\"}],\"payable\":false,\"stateMutability\":\"view\",\"type\":\"function\"}]"
+// Deprecated: Use ContractMetaData.ABI instead.
+var ContractABI = ContractMetaData.ABI
 
 // ContractBin is the compiled bytecode used for deploying new contracts.
-var ContractBin = "0x608060405234801561001057600080fd5b506040516104673803806104678339818101604052602081101561003357600080fd5b810190808051604051939291908464010000000082111561005357600080fd5b90830190602082018581111561006857600080fd5b825186602082028301116401000000008211171561008557600080fd5b82525081516020918201928201910280838360005b838110156100b257818101518382015260200161009a565b5050505090500160405250505060008090505b815181101561012757600160405180604001604052808484815181106100e757fe5b60209081029190910181015182526000918101829052835460018181018655948352918190208351600290930201918255919091015190820155016100c5565b505061032f806101386000396000f3fe60806040526004361061005a5760003560e01c8063609ff1bd11610043578063609ff1bd146100c1578063a3ec138d146100e8578063e2ba53f0146101285761005a565b80630121b93f1461005f578063013cf08b1461007e575b600080fd5b61007c6004803603602081101561007557600080fd5b503561013d565b005b34801561008a57600080fd5b506100a8600480360360208110156100a157600080fd5b5035610229565b6040805192835260208301919091528051918290030190f35b3480156100cd57600080fd5b506100d6610254565b60408051918252519081900360200190f35b3480156100f457600080fd5b506100d66004803603602081101561010b57600080fd5b503573ffffffffffffffffffffffffffffffffffffffff166102bb565b34801561013457600080fd5b506100d66102cd565b33600090815260208190526040902054801561018057600180600183038154811061016457fe5b6000918252602090912060016002909202010180549190910390555b3360009081526020526001805481908490811061019957fe5b906000526020600020906002020160010160008282540192505081905550600182815481106101c457fe5b906000526020600020906002020160000154823373ffffffffffffffffffffffffffffffffffffffff167fee51d93e4784cfee8c8b14400fd5c768d31980d6a648124618b164b9b3dd69e1346040518082815260200191505060405180910390a45050565b6001818154811061023657fe5b60009182526020909120600290910201805460019091015490915082565b600080805b6001548110156102b657816001828154811061027157fe5b90600052602060002090600202016001015411156102ae576001818154811061029657fe5b90600052602060002090600202016001015491508092505b600101610259565b505090565b60006020819052908152604090205481565b600060016102d9610254565b815481106102e357fe5b90600052602060002090600202016000015490509056fea265627a7a723158207d2c2287159dd480a6fc9af9edeae1b086492978db89fbc32be265a54a9c00d764736f6c634300050c0032"
+// Deprecated: Use ContractMetaData.Bin instead.
+var ContractBin = ContractMetaData.Bin
 
 // DeployContract deploys a new Ethereum contract, binding an instance of Contract to it.
 func DeployContract(auth *bind.TransactOpts, backend bind.ContractBackend, proposalNames [][32]byte) (common.Address, *types.Transaction, *Contract, error) {
-	parsed, err := abi.JSON(strings.NewReader(ContractABI))
+	parsed, err := ContractMetaData.GetAbi()
 	if err != nil {
 		return common.Address{}, nil, nil, err
 	}
+	if parsed == nil {
+		return common.Address{}, nil, nil, errors.New("GetABI returned nil")
+	}
 
-	address, tx, contract, err := bind.DeployContract(auth, parsed, common.FromHex(ContractBin), backend, proposalNames)
+	address, tx, contract, err := bind.DeployContract(auth, *parsed, common.FromHex(ContractBin), backend, proposalNames)
 	if err != nil {
 		return common.Address{}, nil, nil, err
 	}
