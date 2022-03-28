@@ -29,7 +29,7 @@ func NewNodes(cfg *Config, input <-chan *Transaction) *Nodes {
 		receipts: make(chan int64, 10),
 		Done:     make(chan struct{}),
 		cfg:      cfg,
-		Instance: logger.MakeInstance(),
+		Instance: logger.New(),
 	}
 
 	for _, url := range cfg.URLs {
@@ -115,8 +115,8 @@ func (n *Nodes) measureNetworkTPS() {
 }
 
 func (n *Nodes) add(url string) {
-	c := NewSender(url)
-	c.SetName(fmt.Sprintf("Node-%d", len(n.conns)))
+	name := fmt.Sprintf("Node-%d", len(n.conns))
+	c := NewSender(url, name)
 	n.conns = append(n.conns, c)
 }
 

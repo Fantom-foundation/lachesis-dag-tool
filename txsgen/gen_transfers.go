@@ -38,7 +38,7 @@ func NewTransfersGenerator(cfg *Config, ks *keystore.KeyStore) *TransfersGenerat
 		chainId: big.NewInt(cfg.ChainId),
 		ks:      ks,
 
-		Instance: logger.MakeInstance(),
+		Instance: logger.New("TransfersGen"),
 	}
 	g.state.Log = g.Log
 

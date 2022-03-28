@@ -37,7 +37,7 @@ func NewCallsGenerator(cfg *Config, ks *keystore.KeyStore) *CallsGenerator {
 		chainId: big.NewInt(cfg.ChainId),
 		ks:      ks,
 
-		Instance: logger.MakeInstance(),
+		Instance: logger.New("CallsGen"),
 	}
 	g.state.Log = g.Log
 

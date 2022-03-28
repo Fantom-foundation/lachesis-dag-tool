@@ -33,7 +33,7 @@ func NewReadonlyGenerator(cfg *Config, ks *keystore.KeyStore) *ReadonlyGenerator
 		chainId: big.NewInt(cfg.ChainId),
 		ks:      ks,
 
-		Instance: logger.MakeInstance(),
+		Instance: logger.New("ReadonlyGen"),
 	}
 	g.state.Log = g.Log
 

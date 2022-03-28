@@ -25,13 +25,13 @@ type Sender struct {
 	logger.Instance
 }
 
-func NewSender(url string) *Sender {
+func NewSender(url, name string) *Sender {
 	s := &Sender{
 		url:       url,
 		input:     make(chan *Transaction, 10),
 		callbacks: make(map[common.Hash]TxCallback),
 
-		Instance: logger.MakeInstance(),
+		Instance: logger.New(name),
 	}
 
 	s.work.Add(1)

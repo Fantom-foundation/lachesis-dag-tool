@@ -11,6 +11,7 @@ import (
 	"github.com/Fantom-foundation/go-opera/flags"
 	"github.com/Fantom-foundation/go-opera/integration/makegenesis"
 	_ "github.com/Fantom-foundation/go-opera/version"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/common"
@@ -163,7 +164,7 @@ func makeFakenetAccs(ctx *cli.Context) error {
 	}
 
 	for i := accsOffset; i < (accsOffset + accsCount); i++ {
-		key := makegenesis.FakeKey(i)
+		key := makegenesis.FakeKey(idx.ValidatorID(i))
 		_, err := keyStore.ImportECDSA(key, "")
 		if err != nil {
 			return err
@@ -194,7 +195,6 @@ func initAccsBalances(ctx *cli.Context) error {
 	maxTps := getTpsLimit(ctx)
 
 	generator := NewBalancesGenerator(cfg, keyStore, amount)
-	generator.SetName("InitBalance")
 	err = generate(generator, maxTps)
 	return err
 }
@@ -210,7 +210,6 @@ func generateCalls(ctx *cli.Context) error {
 	maxTps := getTpsLimit(ctx)
 
 	generator := NewCallsGenerator(cfg, keyStore)
-	generator.SetName("CallsGen")
 	err = generate(generator, maxTps)
 	return err
 }
@@ -226,7 +225,6 @@ func generateReadonly(ctx *cli.Context) error {
 	maxTps := getTpsLimit(ctx)
 
 	generator := NewReadonlyGenerator(cfg, keyStore)
-	generator.SetName("ReadonlyGen")
 	err = generate(generator, maxTps)
 	return err
 }
@@ -242,7 +240,6 @@ func generateTransfers(ctx *cli.Context) error {
 	maxTps := getTpsLimit(ctx)
 
 	generator := NewTransfersGenerator(cfg, keyStore)
-	generator.SetName("TransfersGen")
 	err = generate(generator, maxTps)
 	return err
 }

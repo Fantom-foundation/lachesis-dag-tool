@@ -40,7 +40,7 @@ func NewBalancesGenerator(cfg *Config, ks *keystore.KeyStore, amount int64) *Bal
 		ks:      ks,
 		amount:  big.NewInt(amount),
 
-		Instance: logger.MakeInstance(),
+		Instance: logger.New("InitBalance"),
 	}
 	g.state.Log = g.Log
 
