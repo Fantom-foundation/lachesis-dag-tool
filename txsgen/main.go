@@ -60,6 +60,11 @@ func init() {
 			Description: `Deploys a fake Contract and generates a lot of calls behalf of accounts in the keystore dir (except config.Payer).`,
 		},
 		cli.Command{
+			Action:      generateGetLogs,
+			Name:        "getlogs",
+			Description: `Deploys a fake Contract to make a lot of logs behalf, then generates API 'eth_getFilterLogs' calls.`,
+		},
+		cli.Command{
 			Action:      generateReadonly,
 			Name:        "readonly",
 			Description: `Generates a lot of readonly API eth_call to the SFC.`,
@@ -210,6 +215,21 @@ func generateCalls(ctx *cli.Context) error {
 	maxTps := getTpsLimit(ctx)
 
 	generator := NewCallsGenerator(cfg, keyStore)
+	err = generate(generator, maxTps)
+	return err
+}
+
+// generateGetLogs action.
+func generateGetLogs(ctx *cli.Context) error {
+	cfg := mainCfg
+	keyStore, err := makeKeyStore(ctx)
+	if err != nil {
+		return err
+	}
+
+	maxTps := getTpsLimit(ctx)
+
+	generator := NewGetLogsGenerator(cfg, keyStore)
 	err = generate(generator, maxTps)
 	return err
 }
