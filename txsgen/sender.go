@@ -138,17 +138,18 @@ func (s *Sender) background(input <-chan *Transaction) {
 }
 
 func (s *Sender) sendTx(tx *Transaction, client *ethclient.Client) (err error) {
-	var (
-		t      *types.Transaction
-		txHash common.Hash
-	)
+	var t *types.Transaction
+
 	err = try(func() error {
 		t, err = tx.Make(client)
 		return err
 	})
-	if t != nil {
-		txHash = t.Hash()
+
+	if t == nil {
+		return
 	}
+
+	txHash := t.Hash()
 
 	if err == nil {
 		if tx.Callback != nil {

@@ -158,7 +158,7 @@ func (g *GetLogsGenerator) generate(position uint, state *genState) *Transaction
 		dsc      string
 	)
 
-	switch step := (position % 1000001); {
+	switch step := (position % 10e7); {
 
 	case step == 0:
 		dsc = "logemitter contract creation"
@@ -171,7 +171,7 @@ func (g *GetLogsGenerator) generate(position uint, state *genState) *Transaction
 			state.Ready()
 		}
 
-	case 0 < step && step < 10000:
+	case 0 < step && step < 1000:
 		seed := position % count
 		acc := g.accs[seed]
 		dsc = fmt.Sprintf("gen some logs %d", seed)
