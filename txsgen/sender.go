@@ -70,31 +70,32 @@ func (s *Sender) background(input <-chan *Transaction) {
 		headers  = make(chan *types.Header, 1)
 	)
 
-	disconnect := func() {
+	disconnect := func(err error) {
 		if sbscr != nil {
+			s.Log.Warn("unsubscribe from", "url", s.url, "cause", err)
 			sbscr.Unsubscribe()
 			sbscr = nil
 		}
 		if client != nil {
 			client.Close()
 			client = nil
-			s.Log.Error("disonnect from", "url", s.url)
+			s.Log.Warn("disonnect from", "url", s.url, "cause", err)
 		}
 	}
-	defer disconnect()
+	defer disconnect(nil)
 
 	for {
 		// client connect
 		for client == nil {
 			client, err = s.connect()
 			if err != nil {
-				disconnect()
+				disconnect(err)
 				delay()
 				continue
 			}
 			sbscr, err = s.subscribe(client, headers)
 			if err != nil {
-				disconnect()
+				disconnect(err)
 				delay()
 				continue
 			}
@@ -103,7 +104,7 @@ func (s *Sender) background(input <-chan *Transaction) {
 		if curBlock.Cmp(maxBlock) <= 0 {
 			err = s.readReceipts(curBlock, client)
 			if err != nil {
-				disconnect()
+				disconnect(err)
 				delay()
 				continue
 			}
@@ -113,7 +114,7 @@ func (s *Sender) background(input <-chan *Transaction) {
 		if tx != nil {
 			err := s.sendTx(tx, client)
 			if err != nil {
-				disconnect()
+				disconnect(err)
 				delay()
 				continue
 			}
