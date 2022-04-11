@@ -146,6 +146,17 @@ func (s *Sender) sendTx(tx *Transaction, client *ethclient.Client) (err error) {
 		return err
 	})
 
+	if err != nil {
+		switch err.Error() {
+		case "context deadline exceeded":
+			s.Log.Warn("tx making skip", "dsc", tx.Dsc, "cause", err)
+			return nil
+		default:
+			return err
+		}
+
+	}
+
 	if t == nil {
 		return
 	}
