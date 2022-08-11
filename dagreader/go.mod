@@ -3,9 +3,9 @@ module github.com/Fantom-foundation/lachesis-dag-tool/dagreader
 go 1.14
 
 require (
-	github.com/Fantom-foundation/go-opera v0.0.0-20210820105149-07604c23d28c
-	github.com/Fantom-foundation/lachesis-base v0.0.0-20210721130657-54ad3c8a18c1
-	github.com/ethereum/go-ethereum v1.9.22
+	github.com/Fantom-foundation/go-opera v1.1.1-rc.2
+	github.com/Fantom-foundation/lachesis-base v0.0.0-20220103160934-6b4931c60582
+	github.com/ethereum/go-ethereum v1.10.8
 	github.com/hashicorp/golang-lru v0.5.5-0.20210104140557-80c98217689d
 	github.com/neo4j/neo4j-go-driver v1.8.3
 	github.com/paulbellamy/ratecounter v0.2.0
@@ -16,6 +16,6 @@ require (
 )
 
 replace (
-	github.com/ethereum/go-ethereum => github.com/Fantom-foundation/go-ethereum v1.9.7-0.20210817093144-c7491520e043
+	github.com/ethereum/go-ethereum => github.com/Fantom-foundation/go-ethereum v1.10.8-ftm-rc5
 	gopkg.in/urfave/cli.v1 => github.com/urfave/cli v1.20.0
 )
