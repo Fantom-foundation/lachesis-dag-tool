@@ -1,6 +1,7 @@
 package main
 
 import (
+	"math/big"
 	"os"
 	"path/filepath"
 
@@ -11,7 +12,7 @@ import (
 
 var (
 	gasLimit = uint64(21000)
-	gasPrice = opera.FakeEconomyRules().MinGasPrice // minimal
+	gasPrice = new(big.Int).Mul(opera.FakeEconomyRules().MinGasPrice, big.NewInt(2))
 )
 
 func makeKeyStore(ctx *cli.Context) (*keystore.KeyStore, error) {
