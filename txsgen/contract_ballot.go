@@ -9,11 +9,13 @@ import (
 	"math/rand"
 	"time"
 
+	"github.com/Fantom-foundation/go-opera/integration/makegenesis"
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 
 	"github.com/Fantom-foundation/lachesis-dag-tool/txsgen/ballot"
@@ -97,6 +99,53 @@ func (g *CallsGenerator) ballotWinner(contract common.Address) TxMaker {
 
 		winner, err := caller.WinnerName(g.ReadOnly())
 		g.Log.Info("The winner", "hash", winner)
+
+		return nil, err
+	}
+}
+
+var (
+	addresses []common.Address
+	nums      []*big.Int
+)
+
+func (g *CallsGenerator) ballotLogs(contract common.Address) TxMaker {
+	if addresses == nil {
+		addresses = make([]common.Address, 1000)
+		for i := range addresses {
+			addresses[i] = crypto.PubkeyToAddress(makegenesis.FakeKey(i).PublicKey)
+		}
+	}
+	if nums == nil {
+		nums = make([]*big.Int, 100)
+		for i := range nums {
+			nums[i] = big.NewInt(int64(i))
+		}
+	}
+
+	return func(client *ethclient.Client) (*types.Transaction, error) {
+		filterer, err := ballot.NewContractFilterer(contract, client)
+		if err != nil {
+			panic(err)
+		}
+
+		it, err := filterer.FilterVoiting(
+			&bind.FilterOpts{},
+			addresses,
+			nums,
+			nil,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		count := 0
+		for it.Next() {
+			count++
+		}
+		err = it.Close()
+
+		g.Log.Info("Logs massive reading", "got", count)
 
 		return nil, err
 	}

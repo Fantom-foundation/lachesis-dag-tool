@@ -179,9 +179,11 @@ func (g *CallsGenerator) generate(position uint, state *genState) *Transaction {
 		break
 
 	case 0 < step && step < 100000 && step%2 == 1:
-		acc := g.accs[(position/2)%count]
-		dsc = fmt.Sprintf("count voite logs of %s", acc.Address.String())
-		maker = g.ballotCountOfVoites(acc, *ballotAddr)
+		//acc := g.accs[(position/2)%count]
+		//dsc = fmt.Sprintf("count voite logs of %s", acc.Address.String())
+		//maker = g.ballotCountOfVoites(acc, *ballotAddr)
+		dsc = "ballot logs reading"
+		maker = g.ballotLogs(*ballotAddr)
 		break
 
 	case step == 100000:
